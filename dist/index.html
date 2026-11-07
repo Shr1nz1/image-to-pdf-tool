@@ -1,0 +1,1074 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>图片转 PDF 小工具</title>
+<style>
+:root {
+  color-scheme: light;
+  --ink:#182b39; --muted:#657782; --line:#d7e0e2; --paper:#fff; --wash:#f2f6f4;
+  --accent:#176b62; --accent-dark:#0f514a; --accent-soft:#e5f3ef; --danger:#b63f3f;
+  --shadow:0 10px 35px rgba(24,43,57,.08);
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--wash); color:var(--ink); font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+header { padding:26px 20px; color:#fff; background:linear-gradient(120deg,#173c45,#176b62); }
+.header-inner, main { width:min(1040px,calc(100% - 32px)); margin:0 auto; }
+h1 { margin:0 0 4px; font-size:clamp(24px,4vw,32px); }
+header p { margin:0; color:rgba(255,255,255,.82); }
+main { padding:20px 0 50px; }
+.panel,.editor,.preview-panel,.actions { border:1px solid var(--line); border-radius:16px; background:var(--paper); box-shadow:var(--shadow); }
+.panel { padding:18px; }
+.instructions { margin:0 0 14px; color:var(--muted); }
+.dropzone {
+  display:flex; align-items:center; justify-content:center; gap:14px; min-height:106px; padding:16px;
+  border:2px dashed #9ab8b1; border-radius:14px; background:#f7fbf9; cursor:pointer; transition:.15s ease;
+}
+.dropzone:hover,.dropzone.dragover { border-color:var(--accent); background:var(--accent-soft); }
+.drop-icon { display:grid; place-items:center; flex:0 0 46px; width:46px; height:46px; border-radius:14px; background:var(--accent-soft); color:var(--accent); font-size:27px; font-weight:700; }
+.drop-copy strong { display:block; font-size:17px; }
+.drop-copy small { display:block; margin-top:3px; color:var(--muted); }
+.dropzone input { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+.settings { display:grid; grid-template-columns:minmax(180px,1fr) auto; gap:14px; align-items:end; margin-top:14px; }
+.field-label { display:block; margin-bottom:5px; color:var(--muted); font-size:13px; font-weight:650; }
+.text-input { width:100%; min-height:42px; padding:9px 12px; border:1px solid var(--line); border-radius:10px; color:var(--ink); font:inherit; background:#fff; }
+.summary { min-height:42px; display:flex; align-items:center; padding:8px 13px; border-radius:10px; background:var(--accent-soft); color:var(--accent-dark); font-weight:700; white-space:nowrap; }
+.note-local { margin:12px 0 0; color:var(--muted); font-size:13px; }
+button { min-height:38px; padding:7px 11px; border:1px solid var(--line); border-radius:9px; background:#fff; color:var(--ink); font:inherit; font-size:14px; font-weight:650; cursor:pointer; transition:.15s ease; }
+button:hover:not(:disabled) { border-color:#94b7af; background:#f5faf8; }
+button:disabled { opacity:.45; cursor:not-allowed; }
+button.primary { min-height:44px; padding:9px 18px; border-color:var(--accent); background:var(--accent); color:#fff; font-size:15px; }
+button.primary:hover:not(:disabled) { border-color:var(--accent-dark); background:var(--accent-dark); }
+button.secondary { color:var(--accent-dark); }
+button.danger { color:var(--danger); }
+button.small { min-height:32px; padding:5px 9px; font-size:13px; }
+#workspace[hidden],#empty[hidden],#pdfPreview[hidden],#pageModal[hidden] { display:none; }
+#empty { margin-top:18px; padding:28px 16px; border:1px solid var(--line); border-radius:16px; color:var(--muted); text-align:center; background:rgba(255,255,255,.75); }
+#empty strong { display:block; margin-bottom:4px; color:var(--ink); font-size:17px; }
+.workspace { display:grid; gap:16px; margin-top:18px; }
+.gallery { padding:14px; }
+.gallery-head,.section-head { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.gallery-head strong,.section-head h2 { margin:0; font-size:17px; }
+.gallery-head span,.subtle { color:var(--muted); font-size:13px; }
+.filmstrip { display:flex; gap:9px; overflow-x:auto; padding:10px 1px 6px; scroll-snap-type:x proximity; touch-action:pan-x; }
+.thumb { flex:0 0 116px; width:116px; padding:6px; text-align:left; scroll-snap-align:start; border-color:var(--line); }
+.thumb.selected { border:2px solid var(--accent); padding:5px; background:var(--accent-soft); }
+.thumb canvas { display:block; width:100%; height:68px; object-fit:contain; border-radius:5px; background:#edf1ef; }
+.thumb-name { display:block; margin-top:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+.thumb-badge { color:var(--muted); font-size:11px; }
+.nav-row { display:flex; align-items:center; justify-content:center; gap:12px; margin-top:5px; }
+.nav-count { min-width:90px; color:var(--muted); text-align:center; font-size:13px; font-weight:650; }
+.editor { padding:16px; }
+.editor-top { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:12px; }
+.editor-title { min-width:0; }
+.editor-title strong { display:block; }
+.editor-title .filename { display:block; max-width:100%; overflow-wrap:anywhere; color:var(--muted); font-size:13px; }
+.editor-title .dimensions { color:#829198; font-size:12px; }
+.editor-actions { display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; }
+.option-row { display:flex; flex-wrap:wrap; align-items:center; gap:12px 20px; margin:12px 0; }
+.check-label { display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:700; }
+.check-label input { width:18px; height:18px; accent-color:var(--accent); }
+.rotation-tools { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:10px 12px; border-radius:11px; background:#f6f9f8; }
+.rotation-tools strong { margin-right:2px; font-size:14px; }
+.angle-range { width:min(240px,40vw); accent-color:var(--accent); }
+.angle-input { width:88px; min-height:36px; padding:5px 8px; border:1px solid var(--line); border-radius:8px; font:inherit; }
+.rotation-value { color:var(--muted); font-size:13px; }
+.preview-wrap { position:relative; overflow:hidden; margin-top:12px; border:1px solid #dce4e4; border-radius:11px; background:#eef1ef; }
+.preview-wrap canvas { display:block; width:100%; height:auto; touch-action:pan-y; cursor:default; }
+.preview-wrap.cut-active canvas { cursor:ew-resize; }
+.cut-guide { margin:8px 1px 0; color:var(--muted); font-size:13px; }
+.cut-panel { margin-top:12px; padding:12px; border:1px solid #dce8e5; border-radius:11px; background:#f7fbf9; }
+.cut-panel[hidden] { display:none; }
+.cut-head { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+.cut-head strong { font-size:14px; }
+.cut-list { display:grid; gap:8px; }
+.cut-row { display:grid; grid-template-columns:86px minmax(100px,1fr) 54px auto; gap:8px; align-items:center; }
+.cut-row label { color:var(--muted); font-size:13px; }
+.cut-row input[type=range] { width:100%; accent-color:#d94343; }
+.cut-percent { color:var(--muted); font-size:12px; text-align:right; }
+.empty-cuts { padding:6px 0; color:var(--muted); font-size:13px; }
+.action-row { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; margin-top:16px; }
+.action-copy { color:var(--muted); font-size:13px; }
+.action-copy strong { display:block; color:var(--ink); font-size:15px; }
+.action-buttons { display:flex; gap:8px; }
+#status { min-height:22px; margin:11px 2px 0; color:var(--accent-dark); font-size:14px; }
+#status.error { color:var(--danger); }
+.busy { opacity:.7; pointer-events:none; }
+.preview-panel { margin-top:18px; padding:16px; }
+.preview-heading { display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:12px; }
+.preview-heading h2 { margin:0; font-size:18px; }
+.preview-heading p { margin:3px 0 0; color:var(--muted); font-size:13px; }
+.preview-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(155px,1fr)); gap:14px; }
+.pdf-thumb { min-width:0; padding:0; border:0; background:transparent; text-align:center; }
+.pdf-thumb:hover:not(:disabled) { border:0; background:transparent; }
+.pdf-paper { display:grid; place-items:center; aspect-ratio:1/1.414; padding:4%; border:1px solid #d7dedf; background:#fff; box-shadow:0 3px 10px rgba(24,43,57,.12); }
+.pdf-paper.landscape { aspect-ratio:1.414/1; }
+.pdf-paper img { display:block; width:100%; height:100%; object-fit:contain; }
+.pdf-caption { display:block; padding-top:5px; color:var(--muted); font-size:12px; }
+.preview-footer { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+.modal { position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center; padding:18px; background:rgba(13,25,31,.88); }
+.modal[hidden] { display:none; }
+.modal-inner { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:12px; width:min(1000px,100%); }
+.modal-page { display:flex; flex-direction:column; align-items:center; gap:8px; }
+.modal-page img { display:block; max-width:min(78vw,820px); max-height:82vh; object-fit:contain; background:#fff; box-shadow:0 10px 35px rgba(0,0,0,.28); }
+.modal-count { color:#fff; font-size:14px; }
+.modal-close { position:fixed; top:14px; right:18px; min-width:44px; min-height:44px; border:1px solid rgba(255,255,255,.4); background:rgba(255,255,255,.15); color:#fff; font-size:24px; }
+.modal-nav { border-color:rgba(255,255,255,.4); background:rgba(255,255,255,.12); color:#fff; }
+@media (max-width:640px) {
+  header { padding:22px 16px; }
+  .header-inner,main { width:min(100% - 24px,1040px); }
+  .settings { grid-template-columns:1fr; }
+  .summary { justify-content:center; }
+  .gallery-head { align-items:flex-start; flex-direction:column; gap:3px; }
+  .editor { padding:12px; }
+  .editor-top { display:block; }
+  .editor-actions { justify-content:flex-start; margin-top:9px; }
+  .cut-row { grid-template-columns:70px minmax(80px,1fr) 42px auto; gap:5px; }
+  .action-row { align-items:stretch; flex-direction:column; }
+  .action-buttons { display:grid; grid-template-columns:1fr 1fr; }
+  .action-buttons button { min-height:44px; }
+  .preview-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+  .modal-inner { grid-template-columns:36px minmax(0,1fr) 36px; gap:5px; }
+  .modal-nav { padding:4px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <h1>图片转 PDF</h1>
+    <p>添加、旋转、拆分和预览，都在本地浏览器完成。</p>
+  </div>
+</header>
+<main>
+  <section class="panel" aria-label="添加图片与文件设置">
+    <p class="instructions">添加多张图片。所有图片默认纳入 PDF，可逐张取消；PDF 页序按图片顺序和分割线从左到右排列。</p>
+    <label class="dropzone" id="dropzone">
+      <input id="fileInput" type="file" accept="image/*" multiple>
+      <span class="drop-icon" aria-hidden="true">＋</span>
+      <span class="drop-copy"><strong>添加图片</strong><small>支持 JPG、PNG、WebP 等常见格式，也可以拖放多张图片</small></span>
+    </label>
+    <div class="settings">
+      <label>
+        <span class="field-label">PDF 文件名</span>
+        <input class="text-input" id="pdfName" type="text" value="图片合并.pdf" maxlength="100">
+      </label>
+      <div class="summary" id="summary">0 张入选 · 0 页</div>
+    </div>
+    <p class="note-local">PDF 自动适配 A4 横版或竖版。图片仅在当前浏览器本地处理，不会上传。</p>
+  </section>
+
+  <section id="empty">
+    <strong>先添加几张图片</strong>
+    添加后可以左右滑动浏览、旋转照片、移动竖线拆页并预览最终 PDF。
+  </section>
+
+  <div class="workspace" id="workspace" hidden>
+    <section class="panel gallery">
+      <div class="gallery-head">
+        <strong>图片顺序与选择</strong>
+        <span>在大图上左滑下一张、右滑上一张；点击缩略图直接选图。</span>
+      </div>
+      <div class="filmstrip" id="filmstrip" aria-label="已添加图片"></div>
+      <div class="nav-row">
+        <button type="button" id="prevImage">← 上一张</button>
+        <span class="nav-count" id="navCount">0 / 0</span>
+        <button type="button" id="nextImage">下一张 →</button>
+      </div>
+    </section>
+
+    <section class="editor" id="editor" aria-label="当前图片编辑区"></section>
+
+    <section class="actions">
+      <div class="action-copy">
+        <strong>先预览，再下载</strong>
+        预览会显示按当前旋转、分割和图片顺序生成的每一页。
+      </div>
+      <div class="action-buttons">
+        <button class="primary" id="previewPdf" disabled>预览 PDF</button>
+        <button id="downloadPdf" disabled>下载 PDF</button>
+      </div>
+    </section>
+  </div>
+
+  <p id="status" role="status" aria-live="polite"></p>
+
+  <section class="preview-panel" id="pdfPreview" hidden>
+    <div class="preview-heading">
+      <div>
+        <h2>PDF 页面预览</h2>
+        <p id="previewInfo">点击任一页可放大查看。</p>
+      </div>
+      <button type="button" class="small" id="closePreview">收起预览</button>
+    </div>
+    <div class="preview-grid" id="previewGrid"></div>
+    <div class="preview-footer">
+      <button type="button" class="primary" id="downloadFromPreview" disabled>下载这份 PDF</button>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="pageModal" hidden role="dialog" aria-modal="true" aria-label="PDF 单页预览">
+  <button type="button" class="modal-close" id="modalClose" aria-label="关闭">×</button>
+  <div class="modal-inner">
+    <button type="button" class="modal-nav" id="modalPrev" aria-label="上一页">‹</button>
+    <div class="modal-page">
+      <img id="modalImage" alt="PDF 页面放大预览">
+      <div class="modal-count" id="modalCount"></div>
+    </div>
+    <button type="button" class="modal-nav" id="modalNext" aria-label="下一页">›</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const fileInput = document.getElementById("fileInput");
+  const dropzone = document.getElementById("dropzone");
+  const workspace = document.getElementById("workspace");
+  const empty = document.getElementById("empty");
+  const editor = document.getElementById("editor");
+  const filmstrip = document.getElementById("filmstrip");
+  const summary = document.getElementById("summary");
+  const navCount = document.getElementById("navCount");
+  const prevImage = document.getElementById("prevImage");
+  const nextImage = document.getElementById("nextImage");
+  const previewButton = document.getElementById("previewPdf");
+  const downloadButton = document.getElementById("downloadPdf");
+  const downloadFromPreview = document.getElementById("downloadFromPreview");
+  const pdfNameInput = document.getElementById("pdfName");
+  const status = document.getElementById("status");
+  const previewPanel = document.getElementById("pdfPreview");
+  const previewGrid = document.getElementById("previewGrid");
+  const previewInfo = document.getElementById("previewInfo");
+  const pageModal = document.getElementById("pageModal");
+  const modalImage = document.getElementById("modalImage");
+  const modalCount = document.getElementById("modalCount");
+  const encoder = new TextEncoder();
+  const records = [];
+  let currentIndex = 0;
+  let busy = false;
+  let preparedPdf = null;
+  let previewUrls = [];
+  let modalIndex = 0;
+
+  function setStatus(message, isError) {
+    status.textContent = message || "";
+    status.classList.toggle("error", Boolean(isError));
+  }
+
+  function sourceWidth(source) { return source instanceof HTMLCanvasElement ? source.width : source.naturalWidth; }
+  function sourceHeight(source) { return source instanceof HTMLCanvasElement ? source.height : source.naturalHeight; }
+  function getProcessed(record) {
+    if (Math.abs(record.rotation % 360) < 0.001) return record.image;
+    if (record.processed && record.processedAngle === record.rotation) return record.processed;
+    const sourceW = record.image.naturalWidth;
+    const sourceH = record.image.naturalHeight;
+    const radians = record.rotation * Math.PI / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    const outW = Math.max(1, Math.ceil(Math.abs(sourceW * cos) + Math.abs(sourceH * sin)));
+    const outH = Math.max(1, Math.ceil(Math.abs(sourceH * cos) + Math.abs(sourceW * sin)));
+    const canvas = document.createElement("canvas");
+    canvas.width = outW;
+    canvas.height = outH;
+    const context = canvas.getContext("2d", { alpha: false });
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, outW, outH);
+    context.translate(outW / 2, outH / 2);
+    context.rotate(radians);
+    context.drawImage(record.image, -sourceW / 2, -sourceH / 2);
+    record.processed = canvas;
+    record.processedAngle = record.rotation;
+    return canvas;
+  }
+
+  function loadImage(file) {
+    return new Promise(function (resolve, reject) {
+      const url = URL.createObjectURL(file);
+      const image = new Image();
+      image.onload = function () {
+        resolve({
+          file: file, url: url, image: image, include: true, rotation: 0, processed: null,
+          processedAngle: null, split: false, cuts: []
+        });
+      };
+      image.onerror = function () {
+        URL.revokeObjectURL(url);
+        reject(new Error("无法读取图片：" + file.name));
+      };
+      image.src = url;
+    });
+  }
+
+  async function addFiles(fileList) {
+    const files = Array.from(fileList || []).filter(function (file) { return file.type.indexOf("image/") === 0; });
+    if (!files.length) {
+      setStatus("请选择常见格式的图片文件。", true);
+      return;
+    }
+    setStatus("正在读取图片…", false);
+    const firstAdded = records.length;
+    const results = await Promise.all(files.map(function (file) {
+      return loadImage(file).catch(function (error) { return { error: error }; });
+    }));
+    const errors = [];
+    results.forEach(function (result) {
+      if (result.error) errors.push(result.error.message);
+      else records.push(result);
+    });
+    if (records.length) currentIndex = Math.min(firstAdded, records.length - 1);
+    invalidatePreview(false);
+    renderAll();
+    if (errors.length) setStatus(errors.join("；"), true);
+    else setStatus("已添加 " + files.length + " 张图片。", false);
+  }
+
+  fileInput.addEventListener("change", function () {
+    addFiles(fileInput.files);
+    fileInput.value = "";
+  });
+  dropzone.addEventListener("dragover", function (event) {
+    event.preventDefault();
+    dropzone.classList.add("dragover");
+  });
+  dropzone.addEventListener("dragleave", function () { dropzone.classList.remove("dragover"); });
+  dropzone.addEventListener("drop", function (event) {
+    event.preventDefault();
+    dropzone.classList.remove("dragover");
+    addFiles(event.dataTransfer.files);
+  });
+
+  function formatBytes(bytes) {
+    if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024)) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  }
+  function normalizeAngle(angle) {
+    let normalized = ((angle % 360) + 360) % 360;
+    if (normalized > 180) normalized -= 360;
+    return Math.round(normalized * 10) / 10;
+  }
+  function drawSource(canvas, source, maxW, maxH) {
+    const w = sourceWidth(source);
+    const h = sourceHeight(source);
+    const scale = Math.min(1, maxW / w, maxH / h);
+    canvas.width = Math.max(1, Math.round(w * scale));
+    canvas.height = Math.max(1, Math.round(h * scale));
+    const context = canvas.getContext("2d", { alpha: false });
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(source, 0, 0, canvas.width, canvas.height);
+  }
+  function activeRecord() {
+    return records[currentIndex] || null;
+  }
+
+  function renderAll() {
+    workspace.hidden = records.length === 0;
+    empty.hidden = records.length > 0;
+    if (!records.length) {
+      editor.replaceChildren();
+      filmstrip.replaceChildren();
+      summary.textContent = "0 张入选 · 0 页";
+      previewButton.disabled = true;
+      downloadButton.disabled = true;
+      return;
+    }
+    currentIndex = Math.max(0, Math.min(currentIndex, records.length - 1));
+    renderFilmstrip();
+    renderEditor();
+    updateSummary();
+    prevImage.disabled = currentIndex === 0;
+    nextImage.disabled = currentIndex === records.length - 1;
+    navCount.textContent = (currentIndex + 1) + " / " + records.length;
+  }
+
+  function renderFilmstrip() {
+    filmstrip.replaceChildren();
+    records.forEach(function (record, index) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "thumb" + (index === currentIndex ? " selected" : "");
+      button.title = record.file.name;
+      button.setAttribute("aria-label", "选择第 " + (index + 1) + " 张图片");
+      const canvas = document.createElement("canvas");
+      drawSource(canvas, getProcessed(record), 200, 120);
+      const name = document.createElement("span");
+      name.className = "thumb-name";
+      name.textContent = (index + 1) + ". " + record.file.name;
+      const badge = document.createElement("span");
+      badge.className = "thumb-badge";
+      badge.textContent = record.include ? (record.split ? (record.cuts.length + 1) + " 页" : "1 页") : "未加入";
+      button.append(canvas, name, badge);
+      button.addEventListener("click", function () { selectImage(index, true); });
+      filmstrip.append(button);
+    });
+    const activeThumb = filmstrip.children[currentIndex];
+    if (activeThumb) activeThumb.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  }
+
+  function makeButton(text, className, title, handler) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = text;
+    if (className) button.className = className;
+    if (title) button.title = title;
+    button.addEventListener("click", handler);
+    return button;
+  }
+
+  function renderEditor() {
+    const record = activeRecord();
+    editor.replaceChildren();
+    if (!record) return;
+
+    const top = document.createElement("div");
+    top.className = "editor-top";
+    const title = document.createElement("div");
+    title.className = "editor-title";
+    const heading = document.createElement("strong");
+    heading.textContent = "第 " + (currentIndex + 1) + " 张";
+    const filename = document.createElement("span");
+    filename.className = "filename";
+    filename.textContent = record.file.name;
+    const dimensions = document.createElement("span");
+    dimensions.className = "dimensions";
+    dimensions.textContent = record.image.naturalWidth + " × " + record.image.naturalHeight + " · " + formatBytes(record.file.size);
+    title.append(heading, filename, dimensions);
+
+    const tools = document.createElement("div");
+    tools.className = "editor-actions";
+    const moveUp = makeButton("上移", "secondary small", "调整 PDF 页序", function () { moveRecord(record, -1); });
+    const moveDown = makeButton("下移", "secondary small", "调整 PDF 页序", function () { moveRecord(record, 1); });
+    const remove = makeButton("删除", "danger small", "移除此图片", function () { removeRecord(record); });
+    moveUp.disabled = currentIndex === 0 || busy;
+    moveDown.disabled = currentIndex === records.length - 1 || busy;
+    remove.disabled = busy;
+    tools.append(moveUp, moveDown, remove);
+    top.append(title, tools);
+
+    const options = document.createElement("div");
+    options.className = "option-row";
+    const includeLabel = document.createElement("label");
+    includeLabel.className = "check-label";
+    const include = document.createElement("input");
+    include.type = "checkbox";
+    include.checked = record.include;
+    include.addEventListener("change", function () {
+      record.include = include.checked;
+      invalidatePreview();
+      renderAll();
+    });
+    const includeText = document.createElement("span");
+    includeText.textContent = "加入 PDF";
+    includeLabel.append(include, includeText);
+
+    const splitLabel = document.createElement("label");
+    splitLabel.className = "check-label";
+    const split = document.createElement("input");
+    split.type = "checkbox";
+    split.checked = record.split;
+    split.addEventListener("change", function () {
+      record.split = split.checked;
+      if (record.split && record.cuts.length === 0) record.cuts = [0.5];
+      invalidatePreview();
+      renderAll();
+    });
+    const splitText = document.createElement("span");
+    splitText.textContent = "拆分此图";
+    splitLabel.append(split, splitText);
+    options.append(includeLabel, splitLabel);
+
+    const rotation = document.createElement("div");
+    rotation.className = "rotation-tools";
+    const rotationTitle = document.createElement("strong");
+    rotationTitle.textContent = "旋转";
+    const leftTurn = makeButton("↶ 左转 90°", "secondary small", "逆时针旋转90度", function () {
+      applyRotation(record, record.rotation - 90);
+    });
+    const rightTurn = makeButton("↷ 右转 90°", "secondary small", "顺时针旋转90度", function () {
+      applyRotation(record, record.rotation + 90);
+    });
+    const fineLeft = makeButton("−1°", "secondary small", "逆时针微调1度", function () {
+      applyRotation(record, record.rotation - 1);
+    });
+    const fineRight = makeButton("＋1°", "secondary small", "顺时针微调1度", function () {
+      applyRotation(record, record.rotation + 1);
+    });
+    const range = document.createElement("input");
+    range.className = "angle-range";
+    range.type = "range";
+    range.min = "-180";
+    range.max = "180";
+    range.step = "0.1";
+    range.value = String(record.rotation);
+    range.setAttribute("aria-label", "任意角度旋转");
+    const angle = document.createElement("input");
+    angle.className = "angle-input";
+    angle.type = "number";
+    angle.min = "-360";
+    angle.max = "360";
+    angle.step = "0.1";
+    angle.value = String(record.rotation);
+    angle.setAttribute("aria-label", "旋转角度");
+    const degree = document.createElement("span");
+    degree.className = "rotation-value";
+    degree.textContent = Number(record.rotation).toFixed(1) + "°";
+    let rotationDraftActive = false;
+    range.addEventListener("input", function () {
+      const value = Number(range.value);
+      angle.value = value.toFixed(1);
+      degree.textContent = value.toFixed(1) + "°";
+      if (!rotationDraftActive) {
+        invalidatePreview(false);
+        rotationDraftActive = true;
+      }
+      drawRotatedPreview(record, canvas, value);
+    });
+    range.addEventListener("change", function () {
+      rotationDraftActive = false;
+      applyRotation(record, Number(range.value));
+    });
+    angle.addEventListener("change", function () { applyRotation(record, Number(angle.value) || 0); });
+    rotation.append(rotationTitle, leftTurn, rightTurn, fineLeft, fineRight, range, angle, degree);
+
+    const preview = document.createElement("div");
+    preview.className = "preview-wrap" + (record.split ? " cut-active" : "");
+    const canvas = document.createElement("canvas");
+    drawEditorCanvas(record, canvas);
+    preview.append(canvas);
+
+    const guide = document.createElement("p");
+    guide.className = "cut-guide";
+    guide.textContent = record.split
+      ? "在照片上左滑可切换下一张，右滑切回上一张；拖动红色竖线可左右调整。"
+      : "照片上左滑切换下一张、右滑切换上一张。";
+
+    const cutPanel = document.createElement("div");
+    cutPanel.className = "cut-panel";
+    cutPanel.hidden = !record.split;
+    const cutHead = document.createElement("div");
+    cutHead.className = "cut-head";
+    const cutTitle = document.createElement("strong");
+    cutTitle.textContent = "竖向分割线 · 可拆成多页";
+    const cutButtons = document.createElement("div");
+    cutButtons.append(
+      makeButton("＋ 添加竖线", "secondary small", "在当前最宽区域中间添加一条分割线", function () { addCut(record); }),
+      makeButton("清除全部", "small", "移除当前图片的全部分割线", function () {
+        record.cuts = [];
+        invalidatePreview();
+        renderAll();
+      })
+    );
+    cutHead.append(cutTitle, cutButtons);
+    const cutList = document.createElement("div");
+    cutList.className = "cut-list";
+    renderCutRows(record, cutList, canvas);
+    cutPanel.append(cutHead, cutList);
+
+    editor.append(top, options, rotation, preview, guide, cutPanel);
+    bindImageGestures(record, canvas, preview);
+  }
+
+  function renderCutRows(record, container, canvas) {
+    container.replaceChildren();
+    if (!record.cuts.length) {
+      const emptyCuts = document.createElement("div");
+      emptyCuts.className = "empty-cuts";
+      emptyCuts.textContent = "目前没有分割线；添加竖线后会按从左到右拆成多页。";
+      container.append(emptyCuts);
+      return;
+    }
+    record.cuts.forEach(function (cut, index) {
+      const row = document.createElement("div");
+      row.className = "cut-row";
+      const label = document.createElement("label");
+      label.textContent = "竖线 " + (index + 1);
+      const slider = document.createElement("input");
+      slider.type = "range";
+      slider.min = "5";
+      slider.max = "995";
+      slider.step = "1";
+      slider.value = String(Math.round(cut * 1000));
+      slider.setAttribute("aria-label", "移动第 " + (index + 1) + " 条分割线");
+      const percent = document.createElement("span");
+      percent.className = "cut-percent";
+      percent.textContent = Math.round(cut * 100) + "%";
+      const remove = makeButton("删除", "danger small", "删除此分割线", function () {
+        record.cuts.splice(index, 1);
+        invalidatePreview();
+        renderAll();
+      });
+      slider.addEventListener("input", function () {
+        const min = index === 0 ? 0.005 : record.cuts[index - 1] + 0.005;
+        const max = index === record.cuts.length - 1 ? 0.995 : record.cuts[index + 1] - 0.005;
+        const next = Math.min(max, Math.max(min, Number(slider.value) / 1000));
+        record.cuts[index] = next;
+        slider.value = String(Math.round(next * 1000));
+        percent.textContent = Math.round(next * 100) + "%";
+        drawEditorCanvas(record, canvas);
+      });
+      slider.addEventListener("change", function () {
+        record.cuts.sort(function (a, b) { return a - b; });
+        invalidatePreview();
+        renderAll();
+      });
+      row.append(label, slider, percent, remove);
+      container.append(row);
+    });
+  }
+
+  function drawRotatedPreview(record, canvas, angle) {
+    const sourceW = record.image.naturalWidth;
+    const sourceH = record.image.naturalHeight;
+    const radians = angle * Math.PI / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    const rotatedW = Math.max(1, Math.abs(sourceW * cos) + Math.abs(sourceH * sin));
+    const rotatedH = Math.max(1, Math.abs(sourceH * cos) + Math.abs(sourceW * sin));
+    const scale = Math.min(1, 1600 / rotatedW, 1200 / rotatedH);
+    canvas.width = Math.max(1, Math.round(rotatedW * scale));
+    canvas.height = Math.max(1, Math.round(rotatedH * scale));
+    const context = canvas.getContext("2d", { alpha: false });
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.save();
+    context.translate(canvas.width / 2, canvas.height / 2);
+    context.rotate(radians);
+    context.drawImage(record.image, -sourceW * scale / 2, -sourceH * scale / 2, sourceW * scale, sourceH * scale);
+    context.restore();
+    drawCutOverlay(record, canvas);
+  }
+
+  function drawEditorCanvas(record, canvas) {
+    drawRotatedPreview(record, canvas, record.rotation);
+  }
+
+  function drawCutOverlay(record, canvas) {
+    if (!record.split || !record.cuts.length) return;
+    const context = canvas.getContext("2d");
+    const w = canvas.width;
+    const h = canvas.height;
+    context.save();
+    context.strokeStyle = "#e12f39";
+    context.fillStyle = "#e12f39";
+    context.lineWidth = Math.max(3, w / 450);
+    context.setLineDash([context.lineWidth * 3, context.lineWidth * 1.5]);
+    record.cuts.forEach(function (cut, index) {
+      const x = cut * w;
+      context.beginPath();
+      context.moveTo(x, 0);
+      context.lineTo(x, h);
+      context.stroke();
+      context.setLineDash([]);
+      context.beginPath();
+      context.arc(x, Math.min(h - 9, 17 + index * 18), Math.max(6, w / 180), 0, Math.PI * 2);
+      context.fill();
+      context.setLineDash([context.lineWidth * 3, context.lineWidth * 1.5]);
+    });
+    context.restore();
+  }
+
+  function clampCut(record, index, normalized) {
+    const lower = index === 0 ? 0.005 : record.cuts[index - 1] + 0.005;
+    const upper = index === record.cuts.length - 1 ? 0.995 : record.cuts[index + 1] - 0.005;
+    return Math.min(upper, Math.max(lower, normalized));
+  }
+
+  function bindImageGestures(record, canvas, preview) {
+    let start = null;
+    let draggingIndex = -1;
+    function naturalX(event) {
+      const rect = canvas.getBoundingClientRect();
+      return Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    }
+    canvas.addEventListener("pointerdown", function (event) {
+      if (busy) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      if (record.split && record.cuts.length) {
+        let nearest = -1;
+        let nearestDistance = Infinity;
+        record.cuts.forEach(function (cut, index) {
+          const distance = Math.abs(x - cut * rect.width);
+          if (distance < nearestDistance) { nearestDistance = distance; nearest = index; }
+        });
+        if (nearest >= 0 && nearestDistance <= 24) {
+          draggingIndex = nearest;
+          canvas.setPointerCapture(event.pointerId);
+          event.preventDefault();
+          return;
+        }
+      }
+      start = { x: event.clientX, y: event.clientY };
+      canvas.setPointerCapture(event.pointerId);
+    });
+    canvas.addEventListener("pointermove", function (event) {
+      if (draggingIndex < 0) return;
+      record.cuts[draggingIndex] = clampCut(record, draggingIndex, naturalX(event));
+      drawEditorCanvas(record, canvas);
+      const rows = editor.querySelectorAll(".cut-row");
+      const row = rows[draggingIndex];
+      if (row) {
+        const slider = row.querySelector('input[type="range"]');
+        const percent = row.querySelector(".cut-percent");
+        if (slider) slider.value = String(Math.round(record.cuts[draggingIndex] * 1000));
+        if (percent) percent.textContent = Math.round(record.cuts[draggingIndex] * 100) + "%";
+      }
+    });
+    function finish(event) {
+      if (draggingIndex >= 0) {
+        draggingIndex = -1;
+        record.cuts.sort(function (a, b) { return a - b; });
+        invalidatePreview();
+        renderAll();
+        return;
+      }
+      if (!start) return;
+      const dx = event.clientX - start.x;
+      const dy = event.clientY - start.y;
+      start = null;
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+        if (dx < 0) selectImage(Math.min(records.length - 1, currentIndex + 1), true);
+        else selectImage(Math.max(0, currentIndex - 1), true);
+      }
+    }
+    canvas.addEventListener("pointerup", finish);
+    canvas.addEventListener("pointercancel", function () { start = null; draggingIndex = -1; });
+  }
+
+  function selectImage(index, scrollToEditor) {
+    if (index < 0 || index >= records.length || index === currentIndex) return;
+    currentIndex = index;
+    renderAll();
+    if (scrollToEditor && window.matchMedia("(max-width: 640px)").matches) editor.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function moveRecord(record, direction) {
+    const index = records.indexOf(record);
+    const next = index + direction;
+    if (index < 0 || next < 0 || next >= records.length) return;
+    invalidatePreview();
+    const temp = records[index];
+    records[index] = records[next];
+    records[next] = temp;
+    currentIndex = next;
+    renderAll();
+  }
+
+  function removeRecord(record) {
+    const index = records.indexOf(record);
+    if (index < 0) return;
+    invalidatePreview();
+    URL.revokeObjectURL(record.url);
+    records.splice(index, 1);
+    currentIndex = Math.max(0, Math.min(currentIndex, records.length - 1));
+    renderAll();
+    setStatus("已移除图片。", false);
+  }
+
+  function addCut(record) {
+    const boundaries = [0].concat(record.cuts.slice().sort(function (a, b) { return a - b; }), [1]);
+    let bestGap = 0;
+    let bestStart = 0;
+    for (let i = 0; i < boundaries.length - 1; i++) {
+      const gap = boundaries[i + 1] - boundaries[i];
+      if (gap > bestGap) { bestGap = gap; bestStart = boundaries[i]; }
+    }
+    if (bestGap < 0.012) {
+      setStatus("分割线已经很密，请先删除一条或调整位置。", true);
+      return;
+    }
+    record.cuts.push(bestStart + bestGap / 2);
+    record.cuts.sort(function (a, b) { return a - b; });
+    invalidatePreview();
+    renderAll();
+  }
+
+  function applyRotation(record, angle) {
+    if (!Number.isFinite(angle)) return;
+    record.rotation = normalizeAngle(angle);
+    record.processed = null;
+    record.processedAngle = null;
+    if (record.split && record.cuts.length) record.cuts = [0.5];
+    invalidatePreview();
+    renderAll();
+    setStatus("已旋转 " + record.file.name + " 至 " + record.rotation + "°。", false);
+  }
+
+  function invalidatePreview(showMessage) {
+    preparedPdf = null;
+    previewPanel.hidden = true;
+    previewGrid.replaceChildren();
+    previewUrls.forEach(function (url) { URL.revokeObjectURL(url); });
+    previewUrls = [];
+    downloadButton.disabled = true;
+    downloadFromPreview.disabled = true;
+    if (showMessage !== false && records.length) setStatus("图片已更改，请重新生成预览。", false);
+  }
+
+  function canvasToJpeg(canvas) {
+    return new Promise(function (resolve, reject) {
+      canvas.toBlob(async function (blob) {
+        if (!blob) {
+          reject(new Error("图片转换失败。"));
+          return;
+        }
+        try {
+          resolve({ width: canvas.width, height: canvas.height, bytes: new Uint8Array(await blob.arrayBuffer()) });
+        } catch (error) {
+          reject(error);
+        }
+      }, "image/jpeg", 0.95);
+    });
+  }
+
+  async function sectionToJpeg(source, left, right) {
+    const sourceW = sourceWidth(source);
+    const sourceH = sourceHeight(source);
+    const x0 = Math.max(0, Math.floor(left * sourceW));
+    const x1 = Math.min(sourceW, Math.ceil(right * sourceW));
+    const width = Math.max(1, x1 - x0);
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = sourceH;
+    const context = canvas.getContext("2d", { alpha: false });
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, width, sourceH);
+    context.drawImage(source, x0, 0, width, sourceH, 0, 0, width, sourceH);
+    return canvasToJpeg(canvas);
+  }
+
+  async function makePageImages() {
+    const pages = [];
+    const included = records.filter(function (record) { return record.include; });
+    for (let i = 0; i < included.length; i++) {
+      const record = included[i];
+      const source = getProcessed(record);
+      if (record.split && record.cuts.length) {
+        const bounds = [0].concat(record.cuts.slice().sort(function (a, b) { return a - b; }), [1]);
+        for (let j = 0; j < bounds.length - 1; j++) {
+          if (bounds[j + 1] - bounds[j] <= 0.002) continue;
+          pages.push(await sectionToJpeg(source, bounds[j], bounds[j + 1]));
+        }
+      } else {
+        pages.push(await sectionToJpeg(source, 0, 1));
+      }
+      setStatus("正在整理第 " + (i + 1) + " / " + included.length + " 张入选图片…", false);
+    }
+    return pages;
+  }
+
+  function concatBytes(parts) {
+    const total = parts.reduce(function (sum, part) { return sum + part.length; }, 0);
+    const result = new Uint8Array(total);
+    let offset = 0;
+    parts.forEach(function (part) { result.set(part, offset); offset += part.length; });
+    return result;
+  }
+  function plainObject(id, body) {
+    return encoder.encode(id + " 0 obj\n" + body + "\nendobj\n");
+  }
+  function streamObject(id, dictionary, bytes) {
+    return concatBytes([
+      encoder.encode(id + " 0 obj\n" + dictionary + "\nstream\n"),
+      bytes,
+      encoder.encode("\nendstream\nendobj\n")
+    ]);
+  }
+  function buildPdf(images) {
+    const objects = [null];
+    objects.push(plainObject(1, "<< /Type /Catalog /Pages 2 0 R >>"));
+    objects.push(null);
+    const kids = [];
+    const portraitW = 595.28;
+    const portraitH = 841.89;
+    const margin = 18;
+    images.forEach(function (imageData) {
+      const landscape = imageData.width > imageData.height;
+      const pageW = landscape ? portraitH : portraitW;
+      const pageH = landscape ? portraitW : portraitH;
+      const scale = Math.min((pageW - margin * 2) / imageData.width, (pageH - margin * 2) / imageData.height);
+      const drawW = imageData.width * scale;
+      const drawH = imageData.height * scale;
+      const x = (pageW - drawW) / 2;
+      const y = (pageH - drawH) / 2;
+      const pageId = objects.length;
+      const contentId = pageId + 1;
+      const imageId = pageId + 2;
+      kids.push(pageId + " 0 R");
+      objects.push(plainObject(pageId,
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + pageW.toFixed(2) + " " + pageH.toFixed(2) + "]" +
+        " /Resources << /XObject << /Im0 " + imageId + " 0 R >> >> /Contents " + contentId + " 0 R >>"
+      ));
+      const content = encoder.encode(
+        "q\n" + drawW.toFixed(2) + " 0 0 " + drawH.toFixed(2) + " " + x.toFixed(2) + " " + y.toFixed(2) + " cm\n/Im0 Do\nQ\n"
+      );
+      objects.push(streamObject(contentId, "<< /Length " + content.length + " >>", content));
+      objects.push(streamObject(imageId,
+        "<< /Type /XObject /Subtype /Image /Width " + imageData.width + " /Height " + imageData.height +
+        " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " + imageData.bytes.length + " >>",
+        imageData.bytes
+      ));
+    });
+    objects[2] = plainObject(2, "<< /Type /Pages /Kids [" + kids.join(" ") + "] /Count " + images.length + " >>");
+    const header = concatBytes([encoder.encode("%PDF-1.4\n%"), new Uint8Array([0xe2, 0xe3, 0xcf, 0xd3]), encoder.encode("\n")]);
+    const parts = [header];
+    const offsets = [0];
+    let offset = header.length;
+    for (let i = 1; i < objects.length; i++) {
+      offsets[i] = offset;
+      parts.push(objects[i]);
+      offset += objects[i].length;
+    }
+    const xrefOffset = offset;
+    let xref = "xref\n0 " + objects.length + "\n0000000000 65535 f \n";
+    for (let i = 1; i < objects.length; i++) xref += String(offsets[i]).padStart(10, "0") + " 00000 n \n";
+    xref += "trailer\n<< /Size " + objects.length + " /Root 1 0 R >>\nstartxref\n" + xrefOffset + "\n%%EOF\n";
+    parts.push(encoder.encode(xref));
+    return concatBytes(parts);
+  }
+
+  function renderPdfPreview(pages) {
+    previewUrls.forEach(function (url) { URL.revokeObjectURL(url); });
+    previewUrls = [];
+    previewGrid.replaceChildren();
+    pages.forEach(function (page, index) {
+      const url = URL.createObjectURL(new Blob([page.bytes], { type: "image/jpeg" }));
+      previewUrls.push(url);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "pdf-thumb";
+      button.setAttribute("aria-label", "放大预览第 " + (index + 1) + " 页");
+      const paper = document.createElement("span");
+      paper.className = "pdf-paper" + (page.width > page.height ? " landscape" : "");
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = "";
+      const caption = document.createElement("span");
+      caption.className = "pdf-caption";
+      caption.textContent = "第 " + (index + 1) + " 页 · A4 " + (page.width > page.height ? "横版" : "竖版");
+      paper.append(img);
+      button.append(paper, caption);
+      button.addEventListener("click", function () { openModal(index); });
+      previewGrid.append(button);
+    });
+    previewInfo.textContent = "共 " + pages.length + " 页。点击缩略图可放大查看；所有页面均按当前设置生成。";
+    previewPanel.hidden = false;
+    downloadButton.disabled = false;
+    downloadFromPreview.disabled = false;
+    previewPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function makePreview() {
+    if (busy) return;
+    const included = records.filter(function (record) { return record.include; });
+    if (!included.length) {
+      setStatus("请至少选择一张加入 PDF。", true);
+      return;
+    }
+    busy = true;
+    workspace.classList.add("busy");
+    previewButton.disabled = true;
+    previewButton.textContent = "正在生成预览…";
+    downloadButton.disabled = true;
+    setStatus("正在生成页面预览…", false);
+    try {
+      const pages = await makePageImages();
+      const pdfBytes = buildPdf(pages);
+      preparedPdf = new Blob([pdfBytes], { type: "application/pdf" });
+      renderPdfPreview(pages);
+      setStatus("预览已生成，共 " + pages.length + " 页。", false);
+    } catch (error) {
+      setStatus(error && error.message ? error.message : "生成预览时发生问题。", true);
+    } finally {
+      busy = false;
+      workspace.classList.remove("busy");
+      previewButton.textContent = "预览 PDF";
+      updateSummary();
+    }
+  }
+
+  function safePdfName() {
+    let name = pdfNameInput.value.trim() || "图片合并.pdf";
+    ["\\", "/", ":", "*", "?", "\"", "<", ">", "|"].forEach(function (character) {
+      name = name.split(character).join("_");
+    });
+    if (!/\.pdf$/i.test(name)) name += ".pdf";
+    return name;
+  }
+  function downloadPreparedPdf() {
+    if (!preparedPdf) return;
+    const url = URL.createObjectURL(preparedPdf);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = safePdfName();
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+    setStatus("PDF 已开始下载。", false);
+  }
+
+  function openModal(index) {
+    if (!previewUrls.length) return;
+    modalIndex = Math.max(0, Math.min(index, previewUrls.length - 1));
+    updateModal();
+    pageModal.hidden = false;
+  }
+  function updateModal() {
+    modalImage.src = previewUrls[modalIndex];
+    modalCount.textContent = "第 " + (modalIndex + 1) + " / " + previewUrls.length + " 页";
+    document.getElementById("modalPrev").disabled = modalIndex === 0;
+    document.getElementById("modalNext").disabled = modalIndex === previewUrls.length - 1;
+  }
+  function closeModal() {
+    pageModal.hidden = true;
+    modalImage.removeAttribute("src");
+  }
+  document.getElementById("modalClose").addEventListener("click", closeModal);
+  document.getElementById("modalPrev").addEventListener("click", function () {
+    if (modalIndex > 0) { modalIndex--; updateModal(); }
+  });
+  document.getElementById("modalNext").addEventListener("click", function () {
+    if (modalIndex < previewUrls.length - 1) { modalIndex++; updateModal(); }
+  });
+  pageModal.addEventListener("click", function (event) {
+    if (event.target === pageModal) closeModal();
+  });
+  window.addEventListener("keydown", function (event) {
+    if (pageModal.hidden) return;
+    if (event.key === "Escape") closeModal();
+    if (event.key === "ArrowLeft" && modalIndex > 0) { modalIndex--; updateModal(); }
+    if (event.key === "ArrowRight" && modalIndex < previewUrls.length - 1) { modalIndex++; updateModal(); }
+  });
+
+  document.getElementById("previewPdf").addEventListener("click", makePreview);
+  document.getElementById("downloadPdf").addEventListener("click", downloadPreparedPdf);
+  document.getElementById("downloadFromPreview").addEventListener("click", downloadPreparedPdf);
+  document.getElementById("closePreview").addEventListener("click", function () { previewPanel.hidden = true; });
+  prevImage.addEventListener("click", function () { selectImage(currentIndex - 1, true); });
+  nextImage.addEventListener("click", function () { selectImage(currentIndex + 1, true); });
+
+  function updateSummary() {
+    const included = records.filter(function (record) { return record.include; });
+    const pageCount = included.reduce(function (sum, record) {
+      return sum + (record.split ? Math.max(1, record.cuts.length + 1) : 1);
+    }, 0);
+    summary.textContent = included.length + " 张入选 · " + pageCount + " 页";
+    previewButton.disabled = busy || included.length === 0;
+    downloadButton.disabled = !preparedPdf || busy;
+    downloadFromPreview.disabled = !preparedPdf || busy;
+  }
+
+  window.addEventListener("beforeunload", function () {
+    records.forEach(function (record) { URL.revokeObjectURL(record.url); });
+    previewUrls.forEach(function (url) { URL.revokeObjectURL(url); });
+  });
+})();
+</script>
+</body>
+</html>
