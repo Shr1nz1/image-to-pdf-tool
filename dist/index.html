@@ -171,7 +171,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
 </header>
 <main>
   <section class="panel" aria-label="添加图片与文件设置">
-    <p class="instructions">添加多张图片。所有图片默认纳入 PDF，可逐张裁切、旋转或取消；PDF 页序按图片顺序和分割线从左到右排列。</p>
+    <p class="instructions">添加多张图片。所有图片默认纳入 PDF，可逐张自动拉正、裁切、旋转或取消；PDF 页序按图片顺序和分割线从左到右排列。</p>
     <div class="input-source-row">
       <label class="dropzone" id="dropzone">
         <input id="fileInput" type="file" accept="image/*" multiple>
@@ -196,7 +196,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
 
   <section id="empty">
     <strong>先扫描纸张或添加几张图片</strong>
-    上传或扫描后都可以裁切纸边、调整画面效果，再旋转、拆分和预览最终 PDF。
+    上传或扫描后都可以自动拉正、裁切纸边、调整画面效果，再旋转、拆分和预览最终 PDF。
   </section>
 
   <div class="workspace" id="workspace" hidden>
@@ -604,7 +604,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     }
     cameraInput.click();
   }
-  function openCropEditor(record) {
+  function openCropEditor(record, fallbackMessage) {
     stopCamera();
     scanFileQueue = [];
     currentScanFile = null;
@@ -619,7 +619,44 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     addScanPageButton.textContent = "应用裁切";
     scanSessionCount.textContent = "可拖动四角调整裁切范围";
     const source = rotateSource(record.image, record.rotation);
-    presentScanPhoto(source, fullFrameCorners(source.width, source.height));
+    presentScanPhoto(source, fullFrameCorners(source.width, source.height), Boolean(fallbackMessage));
+    if (fallbackMessage) scanHint.textContent = fallbackMessage;
+  }
+  function applyRectifiedCrop(record, rectified) {
+    if (!record.hasCrop) {
+      record.cropUndo = { rotation: record.rotation, split: record.split, cuts: record.cuts.slice() };
+    }
+    record.image = rectified;
+    record.hasCrop = true;
+    record.rotation = 0;
+    record.processed = null;
+    record.processedAngle = null;
+    record.processedFilter = null;
+    if (record.split) record.cuts = [0.5];
+  }
+  async function autoStraighten(record, button) {
+    button.disabled = true;
+    button.textContent = "正在拉正…";
+    workspace.classList.add("busy");
+    setStatus("正在识别“" + record.file.name + "”的纸张边缘…", false);
+    try {
+      const source = rotateSource(record.image, record.rotation);
+      const corners = await detectDocumentCorners(source);
+      if (!corners || !isValidScanQuad(corners, source.width, source.height)) {
+        openCropEditor(record, "没有识别到清晰的纸张边缘，请拖动四角框出要保留的区域。");
+        return;
+      }
+      applyRectifiedCrop(record, rectifyScanCanvas(source, corners));
+      invalidatePreview(false);
+      renderAll();
+      setStatus("已自动拉正“" + record.file.name + "”。", false);
+    } catch (error) {
+      openCropEditor(record, "自动识别暂不可用，请拖动四角框出要保留的区域。");
+    } finally {
+      workspace.classList.remove("busy");
+      button.disabled = false;
+      button.textContent = "自动拉正";
+    }
   }
   function fullFrameCorners(width, height) {
     const insetX = Math.max(1, Math.min(2, width * 0.002));
@@ -778,16 +815,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
       const rectified = rectifyScanCanvas(scanSourceCanvas, scanCorners);
       if (cropTargetRecord) {
         const record = cropTargetRecord;
-        if (!record.hasCrop) {
-          record.cropUndo = { rotation: record.rotation, split: record.split, cuts: record.cuts.slice() };
-        }
-        record.image = rectified;
-        record.hasCrop = true;
-        record.rotation = 0;
-        record.processed = null;
-        record.processedAngle = null;
-        record.processedFilter = null;
-        if (record.split) record.cuts = [0.5];
+        applyRectifiedCrop(record, rectified);
         closeScanner();
         invalidatePreview(false);
         renderAll();
@@ -824,7 +852,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     }
   });
 
-  function presentScanPhoto(photo, initialCorners) {
+  function presentScanPhoto(photo, initialCorners, skipDetection) {
     scanSourceCanvas = photo;
     scanCorners = initialCorners || defaultScanCorners(photo.width, photo.height);
     scanCornersEdited = false;
@@ -838,6 +866,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
       ? "正在识别裁切范围；也可以直接拖动四角调整。"
       : "正在识别纸张边缘；也可以直接拖动四角调整。";
     drawScanPreview();
+    if (skipDetection) return;
     detectDocumentCorners(photo).then(function (corners) {
       if (scanSourceCanvas !== photo || scanCornersEdited) return;
       if (corners) {
@@ -1203,13 +1232,15 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     tools.className = "editor-actions";
     const moveUp = makeButton("上移", "secondary small", "调整 PDF 页序", function () { moveRecord(record, -1); });
     const moveDown = makeButton("下移", "secondary small", "调整 PDF 页序", function () { moveRecord(record, 1); });
+    const straighten = makeButton("自动拉正", "secondary small", "自动识别纸边并拉正倾斜和透视", function () { autoStraighten(record, straighten); });
     const crop = makeButton(record.hasCrop ? "重新裁切" : "裁切/校正", "secondary small", "拖动四角裁切并校正透视", function () { openCropEditor(record); });
     const remove = makeButton("删除", "danger small", "移除此图片", function () { removeRecord(record); });
     moveUp.disabled = currentIndex === 0 || busy;
     moveDown.disabled = currentIndex === records.length - 1 || busy;
+    straighten.disabled = busy;
     crop.disabled = busy;
     remove.disabled = busy;
-    tools.append(moveUp, moveDown, crop);
+    tools.append(moveUp, moveDown, straighten, crop);
     if (record.hasCrop) {
       const restoreCrop = makeButton("还原原图", "secondary small", "撤销裁切并恢复上传时的图片", function () {
         record.image = record.originalImage;
