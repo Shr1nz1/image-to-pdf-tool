@@ -31,6 +31,9 @@ main { padding:20px 0 50px; }
 .drop-copy strong { display:block; font-size:17px; }
 .drop-copy small { display:block; margin-top:3px; color:var(--muted); }
 .dropzone input { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+.input-source-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:stretch; }
+.source-actions { display:grid; gap:8px; align-content:center; }
+#cameraInput { display:none; }
 .settings { display:grid; grid-template-columns:minmax(180px,1fr) auto; gap:14px; align-items:end; margin-top:14px; }
 .field-label { display:block; margin-bottom:5px; color:var(--muted); font-size:13px; font-weight:650; }
 .text-input { width:100%; min-height:42px; padding:9px 12px; border:1px solid var(--line); border-radius:10px; color:var(--ink); font:inherit; background:#fff; }
@@ -75,6 +78,10 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
 .angle-range { width:min(240px,40vw); accent-color:var(--accent); }
 .angle-input { width:88px; min-height:36px; padding:5px 8px; border:1px solid var(--line); border-radius:8px; font:inherit; }
 .rotation-value { color:var(--muted); font-size:13px; }
+.scan-filter-row { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-top:10px; padding:10px 12px; border-radius:11px; background:#f6f9f8; }
+.scan-filter-row label { color:var(--muted); font-size:13px; font-weight:700; }
+.scan-filter-row select { min-height:36px; padding:5px 30px 5px 9px; border:1px solid var(--line); border-radius:8px; color:var(--ink); background:#fff; font:inherit; }
+.scan-filter-note { color:var(--muted); font-size:12px; }
 .preview-wrap { position:relative; overflow:hidden; margin-top:12px; border:1px solid #dce4e4; border-radius:11px; background:#eef1ef; }
 .preview-wrap canvas { display:block; width:100%; height:auto; touch-action:pan-y; cursor:default; }
 .preview-wrap.cut-active canvas { cursor:ew-resize; }
@@ -116,11 +123,27 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
 .modal-count { color:#fff; font-size:14px; }
 .modal-close { position:fixed; top:14px; right:18px; min-width:44px; min-height:44px; border:1px solid rgba(255,255,255,.4); background:rgba(255,255,255,.15); color:#fff; font-size:24px; }
 .modal-nav { border-color:rgba(255,255,255,.4); background:rgba(255,255,255,.12); color:#fff; }
+.scan-modal { position:fixed; inset:0; z-index:120; display:flex; align-items:center; justify-content:center; padding:12px; background:rgba(13,25,31,.86); }
+.scan-modal[hidden] { display:none; }
+.scan-dialog { width:min(960px,100%); max-height:calc(100vh - 24px); overflow:auto; padding:16px; border:1px solid rgba(255,255,255,.25); border-radius:16px; background:#fff; box-shadow:0 18px 60px rgba(0,0,0,.3); }
+.scan-top { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:8px; }
+.scan-top h2 { margin:0; font-size:20px; }
+.scan-top p { margin:3px 0 0; color:var(--muted); font-size:13px; }
+.scan-stage { display:grid; place-items:center; min-height:240px; max-height:66vh; overflow:hidden; border-radius:12px; background:#17242a; }
+.scan-stage video,.scan-stage canvas { display:block; max-width:100%; max-height:66vh; object-fit:contain; }
+.scan-stage video[hidden],.scan-stage canvas[hidden] { display:none; }
+.scan-stage canvas { touch-action:none; cursor:crosshair; }
+.scan-hint { min-height:22px; margin:9px 1px; color:var(--accent-dark); font-size:13px; }
+.scan-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.scan-session-count { margin-left:auto; color:var(--muted); font-size:13px; }
+.scan-privacy { margin:10px 1px 0; color:var(--muted); font-size:12px; }
 @media (max-width:640px) {
   header { padding:22px 16px; }
   .header-inner,main { width:min(100% - 24px,1040px); }
   .settings { grid-template-columns:1fr; }
   .summary { justify-content:center; }
+  .input-source-row { grid-template-columns:1fr; }
+  .source-actions { grid-template-columns:1fr 1fr; }
   .gallery-head { align-items:flex-start; flex-direction:column; gap:3px; }
   .editor { padding:12px; }
   .editor-top { display:block; }
@@ -132,6 +155,10 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
   .preview-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
   .modal-inner { grid-template-columns:36px minmax(0,1fr) 36px; gap:5px; }
   .modal-nav { padding:4px; }
+  .scan-dialog { padding:12px; }
+  .scan-stage { min-height:180px; max-height:58vh; }
+  .scan-stage video,.scan-stage canvas { max-height:58vh; }
+  .scan-session-count { width:100%; margin:1px 0 0; }
 }
 </style>
 </head>
@@ -139,17 +166,24 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
 <header>
   <div class="header-inner">
     <h1>图片转 PDF</h1>
-    <p>添加、旋转、拆分和预览，都在本地浏览器完成。</p>
+    <p>拍摄扫描、旋转、拆分和预览，都在本地浏览器完成。</p>
   </div>
 </header>
 <main>
   <section class="panel" aria-label="添加图片与文件设置">
     <p class="instructions">添加多张图片。所有图片默认纳入 PDF，可逐张取消；PDF 页序按图片顺序和分割线从左到右排列。</p>
-    <label class="dropzone" id="dropzone">
-      <input id="fileInput" type="file" accept="image/*" multiple>
-      <span class="drop-icon" aria-hidden="true">＋</span>
-      <span class="drop-copy"><strong>添加图片</strong><small>支持 JPG、PNG、WebP 等常见格式，也可以拖放多张图片</small></span>
-    </label>
+    <div class="input-source-row">
+      <label class="dropzone" id="dropzone">
+        <input id="fileInput" type="file" accept="image/*" multiple>
+        <span class="drop-icon" aria-hidden="true">＋</span>
+        <span class="drop-copy"><strong>添加图片</strong><small>支持 JPG、PNG、WebP 等常见格式，也可以拖放多张图片</small></span>
+      </label>
+      <div class="source-actions">
+        <button type="button" class="primary" id="openScanner">📷 打开相机扫描</button>
+        <button type="button" class="secondary" id="importCamera">从相机或相册选图</button>
+        <input id="cameraInput" type="file" accept="image/*" capture="environment" multiple>
+      </div>
+    </div>
     <div class="settings">
       <label>
         <span class="field-label">PDF 文件名</span>
@@ -157,12 +191,12 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
       </label>
       <div class="summary" id="summary">0 张入选 · 0 页</div>
     </div>
-    <p class="note-local">PDF 自动适配 A4 横版或竖版。图片仅在当前浏览器本地处理，不会上传。</p>
+    <p class="note-local">扫描支持纸边识别、透视校正和彩色/灰度/黑白效果。PDF 自动适配 A4 横版或竖版；图片只在当前浏览器处理，不会上传。</p>
   </section>
 
   <section id="empty">
-    <strong>先添加几张图片</strong>
-    添加后可以左右滑动浏览、旋转照片、移动竖线拆页并预览最终 PDF。
+    <strong>先扫描纸张或添加几张图片</strong>
+    扫描后可调整纸张边缘与画面效果，再旋转、拆分和预览最终 PDF。
   </section>
 
   <div class="workspace" id="workspace" hidden>
@@ -210,6 +244,32 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
   </section>
 </main>
 
+<div class="scan-modal" id="scannerModal" hidden>
+  <section class="scan-dialog" role="dialog" aria-modal="true" aria-labelledby="scanTitle">
+    <div class="scan-top">
+      <div>
+        <h2 id="scanTitle">扫描纸张</h2>
+        <p>让整张纸进入画面，拍摄后可拖动四角校正纸边。</p>
+      </div>
+      <button type="button" id="closeScanner">关闭</button>
+    </div>
+    <div class="scan-stage">
+      <video id="scanVideo" autoplay playsinline muted></video>
+      <canvas id="scanPreview" hidden aria-label="拖动四角调整扫描范围"></canvas>
+    </div>
+    <p class="scan-hint" id="scanHint" role="status" aria-live="polite">正在打开相机…</p>
+    <div class="scan-controls">
+      <button type="button" id="chooseScanFile">从相机或相册选图</button>
+      <button type="button" id="retakeScan" hidden>重拍</button>
+      <button type="button" id="detectScan" hidden>重新识别纸边</button>
+      <button type="button" class="primary" id="takeScan">拍摄这一页</button>
+      <button type="button" class="primary" id="addScanPage" hidden>校正并加入 PDF</button>
+      <span class="scan-session-count" id="scanSessionCount">本次已加入 0 页</span>
+    </div>
+    <p class="scan-privacy">相机需经你授权。照片、裁边校正和扫描效果都在本机浏览器处理，不会上传。</p>
+  </section>
+</div>
+
 <div class="modal" id="pageModal" hidden role="dialog" aria-modal="true" aria-label="PDF 单页预览">
   <button type="button" class="modal-close" id="modalClose" aria-label="关闭">×</button>
   <div class="modal-inner">
@@ -227,6 +287,16 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
   "use strict";
 
   const fileInput = document.getElementById("fileInput");
+  const cameraInput = document.getElementById("cameraInput");
+  const scannerModal = document.getElementById("scannerModal");
+  const scanVideo = document.getElementById("scanVideo");
+  const scanPreviewCanvas = document.getElementById("scanPreview");
+  const scanHint = document.getElementById("scanHint");
+  const scanSessionCount = document.getElementById("scanSessionCount");
+  const takeScanButton = document.getElementById("takeScan");
+  const addScanPageButton = document.getElementById("addScanPage");
+  const retakeScanButton = document.getElementById("retakeScan");
+  const detectScanButton = document.getElementById("detectScan");
   const dropzone = document.getElementById("dropzone");
   const workspace = document.getElementById("workspace");
   const empty = document.getElementById("empty");
@@ -254,6 +324,15 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
   let preparedPdf = null;
   let previewUrls = [];
   let modalIndex = 0;
+  let cameraStream = null;
+  let scanSourceCanvas = null;
+  let scanCorners = null;
+  let scanCornersEdited = false;
+  let scanCornerDrag = -1;
+  let scanSessionAdded = 0;
+  let scanFileQueue = [];
+  let currentScanFile = null;
+  let openCvPromise = null;
 
   function setStatus(message, isError) {
     status.textContent = message || "";
@@ -262,9 +341,79 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
 
   function sourceWidth(source) { return source instanceof HTMLCanvasElement ? source.width : source.naturalWidth; }
   function sourceHeight(source) { return source instanceof HTMLCanvasElement ? source.height : source.naturalHeight; }
+  function clampByte(value) { return Math.max(0, Math.min(255, Math.round(value))); }
+  function histogramPercentile(histogram, total, fraction) {
+    const target = total * fraction;
+    let sum = 0;
+    for (let i = 0; i < 256; i++) {
+      sum += histogram[i];
+      if (sum >= target) return i;
+    }
+    return 255;
+  }
+  function otsuThreshold(histogram, total) {
+    let weighted = 0;
+    for (let i = 0; i < 256; i++) weighted += i * histogram[i];
+    let backgroundWeight = 0;
+    let backgroundSum = 0;
+    let bestVariance = -1;
+    let threshold = 160;
+    for (let i = 0; i < 256; i++) {
+      backgroundWeight += histogram[i];
+      if (!backgroundWeight) continue;
+      const foregroundWeight = total - backgroundWeight;
+      if (!foregroundWeight) break;
+      backgroundSum += i * histogram[i];
+      const backgroundMean = backgroundSum / backgroundWeight;
+      const foregroundMean = (weighted - backgroundSum) / foregroundWeight;
+      const variance = backgroundWeight * foregroundWeight * Math.pow(backgroundMean - foregroundMean, 2);
+      if (variance > bestVariance) { bestVariance = variance; threshold = i; }
+    }
+    return threshold;
+  }
+  function applyScanFilter(canvas, mode) {
+    if (!mode || mode === "color") return;
+    const context = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+    const data = pixels.data;
+    const histogram = new Uint32Array(256);
+    for (let i = 0; i < data.length; i += 4) {
+      const luminance = clampByte(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+      histogram[luminance]++;
+    }
+    const count = data.length / 4;
+    if (mode === "grayscale") {
+      for (let i = 0; i < data.length; i += 4) {
+        const luminance = clampByte(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+        data[i] = data[i + 1] = data[i + 2] = luminance;
+      }
+    } else if (mode === "blackwhite") {
+      const threshold = otsuThreshold(histogram, count);
+      for (let i = 0; i < data.length; i += 4) {
+        const luminance = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+        const value = luminance >= threshold ? 255 : 0;
+        data[i] = data[i + 1] = data[i + 2] = value;
+      }
+    } else if (mode === "enhance") {
+      const blackPoint = histogramPercentile(histogram, count, 0.01);
+      const whitePoint = histogramPercentile(histogram, count, 0.99);
+      const span = Math.max(1, whitePoint - blackPoint);
+      for (let i = 0; i < data.length; i += 4) {
+        const luminance = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+        const adjusted = Math.pow(Math.max(0, Math.min(1, (luminance - blackPoint) / span)), 0.96) * 255;
+        const scale = luminance > 1 ? adjusted / luminance : 0;
+        data[i] = clampByte(data[i] * scale);
+        data[i + 1] = clampByte(data[i + 1] * scale);
+        data[i + 2] = clampByte(data[i + 2] * scale);
+      }
+    }
+    context.putImageData(pixels, 0, 0);
+  }
+
   function getProcessed(record) {
-    if (Math.abs(record.rotation % 360) < 0.001) return record.image;
-    if (record.processed && record.processedAngle === record.rotation) return record.processed;
+    const filterMode = record.filterMode || "color";
+    if (Math.abs(record.rotation % 360) < 0.001 && filterMode === "color") return record.image;
+    if (record.processed && record.processedAngle === record.rotation && record.processedFilter === filterMode) return record.processed;
     const sourceW = record.image.naturalWidth;
     const sourceH = record.image.naturalHeight;
     const radians = record.rotation * Math.PI / 180;
@@ -281,19 +430,23 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     context.translate(outW / 2, outH / 2);
     context.rotate(radians);
     context.drawImage(record.image, -sourceW / 2, -sourceH / 2);
+    applyScanFilter(canvas, filterMode);
     record.processed = canvas;
     record.processedAngle = record.rotation;
+    record.processedFilter = filterMode;
     return canvas;
   }
 
-  function loadImage(file) {
+  function loadImage(file, options) {
+    options = options || {};
     return new Promise(function (resolve, reject) {
       const url = URL.createObjectURL(file);
       const image = new Image();
       image.onload = function () {
         resolve({
           file: file, url: url, image: image, include: true, rotation: 0, processed: null,
-          processedAngle: null, split: false, cuts: []
+          processedAngle: null, processedFilter: null, filterMode: options.scanned ? "enhance" : "color",
+          scanned: Boolean(options.scanned), split: false, cuts: []
         });
       };
       image.onerror = function () {
@@ -304,7 +457,8 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     });
   }
 
-  async function addFiles(fileList) {
+  async function addFiles(fileList, options) {
+    options = options || {};
     const files = Array.from(fileList || []).filter(function (file) { return file.type.indexOf("image/") === 0; });
     if (!files.length) {
       setStatus("请选择常见格式的图片文件。", true);
@@ -313,7 +467,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     setStatus("正在读取图片…", false);
     const firstAdded = records.length;
     const results = await Promise.all(files.map(function (file) {
-      return loadImage(file).catch(function (error) { return { error: error }; });
+      return loadImage(file, options).catch(function (error) { return { error: error }; });
     }));
     const errors = [];
     results.forEach(function (result) {
@@ -331,6 +485,18 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     addFiles(fileInput.files);
     fileInput.value = "";
   });
+  cameraInput.addEventListener("change", async function () {
+    const files = Array.from(cameraInput.files || []);
+    cameraInput.value = "";
+    if (!files.length) return;
+    if (scannerModal.hidden) {
+      await addFiles(files, { scanned: true });
+      return;
+    }
+    scanFileQueue = scanFileQueue.concat(files);
+    scanSessionCount.textContent = "已加入 " + scanSessionAdded + " 页 · 待校正 " + scanFileQueue.length + " 张";
+    await showNextScanFile();
+  });
   dropzone.addEventListener("dragover", function (event) {
     event.preventDefault();
     dropzone.classList.add("dragover");
@@ -341,6 +507,522 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     dropzone.classList.remove("dragover");
     addFiles(event.dataTransfer.files);
   });
+
+  function stopCamera() {
+    if (cameraStream) cameraStream.getTracks().forEach(function (track) { track.stop(); });
+    cameraStream = null;
+    scanVideo.srcObject = null;
+  }
+  function resetScanCapture() {
+    scanSourceCanvas = null;
+    scanCorners = null;
+    scanCornersEdited = false;
+    scanVideo.hidden = false;
+    scanPreviewCanvas.hidden = true;
+    takeScanButton.hidden = false;
+    addScanPageButton.hidden = true;
+    retakeScanButton.hidden = true;
+    detectScanButton.hidden = true;
+  }
+  async function openScanner() {
+    scannerModal.hidden = false;
+    scanSessionAdded = 0;
+    scanSessionCount.textContent = "本次已加入 0 页";
+    resetScanCapture();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      scanHint.textContent = "当前浏览器无法直接开启相机，可点“从相机或相册选图”继续。";
+      scanVideo.hidden = true;
+      takeScanButton.hidden = true;
+      return;
+    }
+    scanHint.textContent = "请允许相机访问，然后将整张纸放入画面。";
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 20, max: 30 }
+        }
+      });
+      if (scannerModal.hidden) {
+        stream.getTracks().forEach(function (track) { track.stop(); });
+        return;
+      }
+      cameraStream = stream;
+      scanVideo.srcObject = cameraStream;
+      await scanVideo.play();
+      scanHint.textContent = "让整张纸进入画面后拍摄；自动找边后可拖动四角微调。";
+    } catch (error) {
+      stopCamera();
+      scanHint.textContent = "相机暂不可用或未获授权，可点“从相机或相册选图”继续。";
+      scanVideo.hidden = true;
+      takeScanButton.hidden = true;
+    }
+  }
+  function closeScanner() {
+    stopCamera();
+    scanFileQueue = [];
+    currentScanFile = null;
+    scannerModal.hidden = true;
+    resetScanCapture();
+  }
+  function openScanFilePicker() {
+    if (scannerModal.hidden) {
+      scannerModal.hidden = false;
+      scanSessionAdded = 0;
+      scanFileQueue = [];
+      currentScanFile = null;
+      scanSessionCount.textContent = "本次已加入 0 页";
+      stopCamera();
+      resetScanCapture();
+      scanVideo.hidden = true;
+      takeScanButton.hidden = true;
+      scanHint.textContent = "请选择一张或多张纸张照片；每张都可以手动调整四角。";
+    }
+    cameraInput.click();
+  }
+  function defaultScanCorners(width, height) {
+    const insetX = width * 0.025;
+    const insetY = height * 0.025;
+    return [
+      { x: insetX, y: insetY },
+      { x: width - insetX, y: insetY },
+      { x: width - insetX, y: height - insetY },
+      { x: insetX, y: height - insetY }
+    ];
+  }
+  function drawScanPreview() {
+    if (!scanSourceCanvas || !scanCorners) return;
+    const canvas = scanPreviewCanvas;
+    if (canvas.width !== scanSourceCanvas.width || canvas.height !== scanSourceCanvas.height) {
+      canvas.width = scanSourceCanvas.width;
+      canvas.height = scanSourceCanvas.height;
+    }
+    const context = canvas.getContext("2d", { alpha: false });
+    context.drawImage(scanSourceCanvas, 0, 0);
+    context.save();
+    context.fillStyle = "rgba(10, 22, 28, 0.38)";
+    context.beginPath();
+    context.rect(0, 0, canvas.width, canvas.height);
+    context.moveTo(scanCorners[0].x, scanCorners[0].y);
+    for (let i = 1; i < scanCorners.length; i++) context.lineTo(scanCorners[i].x, scanCorners[i].y);
+    context.closePath();
+    try { context.fill("evenodd"); } catch { context.fill(); }
+    context.beginPath();
+    context.moveTo(scanCorners[0].x, scanCorners[0].y);
+    for (let i = 1; i < scanCorners.length; i++) context.lineTo(scanCorners[i].x, scanCorners[i].y);
+    context.closePath();
+    context.strokeStyle = "#33d6a4";
+    context.lineWidth = Math.max(5, Math.min(canvas.width, canvas.height) / 260);
+    context.setLineDash([context.lineWidth * 3, context.lineWidth * 1.5]);
+    context.stroke();
+    context.setLineDash([]);
+    scanCorners.forEach(function (point, index) {
+      context.beginPath();
+      context.arc(point.x, point.y, Math.max(18, Math.min(canvas.width, canvas.height) / 34), 0, Math.PI * 2);
+      context.fillStyle = "#fff";
+      context.fill();
+      context.strokeStyle = "#176b62";
+      context.lineWidth = Math.max(4, Math.min(canvas.width, canvas.height) / 230);
+      context.stroke();
+      context.fillStyle = "#0f514a";
+      context.font = "bold " + Math.max(18, Math.min(canvas.width, canvas.height) / 32) + "px sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText(String(index + 1), point.x, point.y);
+    });
+    context.restore();
+  }
+  function scanPointFromEvent(event) {
+    const rect = scanPreviewCanvas.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(scanPreviewCanvas.width, (event.clientX - rect.left) / rect.width * scanPreviewCanvas.width)),
+      y: Math.max(0, Math.min(scanPreviewCanvas.height, (event.clientY - rect.top) / rect.height * scanPreviewCanvas.height))
+    };
+  }
+  scanPreviewCanvas.addEventListener("pointerdown", function (event) {
+    if (!scanCorners) return;
+    const rect = scanPreviewCanvas.getBoundingClientRect();
+    const point = scanPointFromEvent(event);
+    let nearest = -1;
+    let distance = Infinity;
+    scanCorners.forEach(function (corner, index) {
+      const dx = (corner.x - point.x) * rect.width / scanPreviewCanvas.width;
+      const dy = (corner.y - point.y) * rect.height / scanPreviewCanvas.height;
+      const currentDistance = Math.hypot(dx, dy);
+      if (currentDistance < distance) { nearest = index; distance = currentDistance; }
+    });
+    if (nearest >= 0 && distance <= 48) {
+      scanCornerDrag = nearest;
+      scanCornersEdited = true;
+      scanPreviewCanvas.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    }
+  });
+  scanPreviewCanvas.addEventListener("pointermove", function (event) {
+    if (scanCornerDrag < 0 || !scanCorners) return;
+    scanCorners[scanCornerDrag] = scanPointFromEvent(event);
+    drawScanPreview();
+  });
+  function finishScanCornerDrag() { scanCornerDrag = -1; }
+  scanPreviewCanvas.addEventListener("pointerup", finishScanCornerDrag);
+  scanPreviewCanvas.addEventListener("pointercancel", finishScanCornerDrag);
+
+  const openScannerButton = document.getElementById("openScanner");
+  openScannerButton.addEventListener("click", openScanner);
+  document.getElementById("importCamera").addEventListener("click", openScanFilePicker);
+  document.getElementById("chooseScanFile").addEventListener("click", openScanFilePicker);
+  document.getElementById("closeScanner").addEventListener("click", closeScanner);
+  scannerModal.addEventListener("click", function (event) {
+    if (event.target === scannerModal) closeScanner();
+  });
+  document.getElementById("takeScan").addEventListener("click", function () {
+    if (!cameraStream || !scanVideo.videoWidth) {
+      scanHint.textContent = "相机还没准备好；也可以从相机或相册选图。";
+      return;
+    }
+    const photo = document.createElement("canvas");
+    photo.width = scanVideo.videoWidth;
+    photo.height = scanVideo.videoHeight;
+    photo.getContext("2d", { alpha: false }).drawImage(scanVideo, 0, 0, photo.width, photo.height);
+    currentScanFile = null;
+    presentScanPhoto(photo);
+  });
+  document.getElementById("retakeScan").addEventListener("click", function () {
+    scanSourceCanvas = null;
+    scanCorners = null;
+    currentScanFile = null;
+    resetScanCapture();
+    scanHint.textContent = "重新对准纸张后拍摄。";
+  });
+  document.getElementById("detectScan").addEventListener("click", async function () {
+    if (!scanSourceCanvas) return;
+    const photo = scanSourceCanvas;
+    scanCornersEdited = false;
+    scanHint.textContent = "正在重新识别纸张边缘…";
+    try {
+      const corners = await detectDocumentCorners(photo);
+      if (scanSourceCanvas !== photo) return;
+      if (corners) {
+        scanCorners = corners;
+        scanHint.textContent = "已更新纸边；拖动四个圆点微调。";
+      } else {
+        scanHint.textContent = "未找到明确纸边；请手动拖动四个圆点。";
+      }
+      drawScanPreview();
+    } catch (error) {
+      scanHint.textContent = "自动识别暂不可用；请手动拖动四个圆点。";
+    }
+  });
+  document.getElementById("addScanPage").addEventListener("click", async function () {
+    if (!scanSourceCanvas || !scanCorners) return;
+    if (!isValidScanQuad(scanCorners, scanSourceCanvas.width, scanSourceCanvas.height)) {
+      scanHint.textContent = "四个角需要围成凸四边形，请重新调整后再加入。";
+      return;
+    }
+    addScanPageButton.disabled = true;
+    scanHint.textContent = "正在拉正纸面并整理扫描页…";
+    try {
+      const rectified = rectifyScanCanvas(scanSourceCanvas, scanCorners);
+      const blob = await new Promise(function (resolve, reject) {
+        rectified.toBlob(function (result) {
+          if (result) resolve(result);
+          else reject(new Error("扫描页生成失败，请重试。"));
+        }, "image/jpeg", 0.95);
+      });
+      const file = new File([blob], currentScanFile ? currentScanFile.name.replace(/\.[^.]+$/, "") + "-扫描.jpg" : "扫描页-" + String(scanSessionAdded + 1).padStart(2, "0") + ".jpg", { type: "image/jpeg" });
+      await addFiles([file], { scanned: true });
+      scanSessionAdded++;
+      scanSessionCount.textContent = "已加入 " + scanSessionAdded + " 页 · 待校正 " + scanFileQueue.length + " 张";
+      if (scanFileQueue.length) {
+        await showNextScanFile();
+      } else {
+        currentScanFile = null;
+        resetScanCapture();
+        if (!cameraStream) {
+          scanVideo.hidden = true;
+          takeScanButton.hidden = true;
+          scanHint.textContent = "照片已校正并加入 PDF；可以关闭窗口，或继续选择照片。";
+        } else {
+          scanHint.textContent = "已加入扫描页；可以继续拍下一页，或关闭后调整扫描效果。";
+        }
+      }
+    } catch (error) {
+      scanHint.textContent = error && error.message ? error.message : "校正失败，请调整四角后重试。";
+    } finally {
+      addScanPageButton.disabled = false;
+    }
+  });
+
+  function presentScanPhoto(photo) {
+    scanSourceCanvas = photo;
+    scanCorners = defaultScanCorners(photo.width, photo.height);
+    scanCornersEdited = false;
+    scanVideo.hidden = true;
+    scanPreviewCanvas.hidden = false;
+    takeScanButton.hidden = true;
+    addScanPageButton.hidden = false;
+    retakeScanButton.hidden = !cameraStream || Boolean(currentScanFile);
+    detectScanButton.hidden = false;
+    scanHint.textContent = "正在识别纸张边缘；也可以直接拖动四角调整。";
+    drawScanPreview();
+    detectDocumentCorners(photo).then(function (corners) {
+      if (scanSourceCanvas !== photo || scanCornersEdited) return;
+      if (corners) {
+        scanCorners = corners;
+        scanHint.textContent = "已找到纸张边缘；拖动四个圆点微调后，点击“校正并加入 PDF”。";
+      } else {
+        scanHint.textContent = "未能自动找到纸边；请拖动四个圆点框住纸张。";
+      }
+      drawScanPreview();
+    }).catch(function () {
+      if (scanSourceCanvas !== photo || scanCornersEdited) return;
+      scanHint.textContent = "自动识别暂不可用；请拖动四个圆点框住纸张。";
+      drawScanPreview();
+    });
+  }
+
+  async function showNextScanFile() {
+    const file = scanFileQueue.shift();
+    if (!file) return;
+    currentScanFile = file;
+    scanSessionCount.textContent = "已加入 " + scanSessionAdded + " 页 · 待校正 " + (scanFileQueue.length + 1) + " 张";
+    scanHint.textContent = "正在载入“" + file.name + "”…";
+    try {
+      const url = URL.createObjectURL(file);
+      const image = new Image();
+      const photo = await new Promise(function (resolve, reject) {
+        image.onload = function () {
+          const canvas = document.createElement("canvas");
+          canvas.width = image.naturalWidth;
+          canvas.height = image.naturalHeight;
+          canvas.getContext("2d", { alpha: false }).drawImage(image, 0, 0);
+          URL.revokeObjectURL(url);
+          resolve(canvas);
+        };
+        image.onerror = function () {
+          URL.revokeObjectURL(url);
+          reject(new Error("无法读取图片：" + file.name));
+        };
+        image.src = url;
+      });
+      presentScanPhoto(photo);
+    } catch (error) {
+      scanHint.textContent = error && error.message ? error.message : "这张照片无法读取，已跳过。";
+      currentScanFile = null;
+      if (scanFileQueue.length) await showNextScanFile();
+      else if (!cameraStream) {
+        resetScanCapture();
+        scanVideo.hidden = true;
+        takeScanButton.hidden = true;
+      }
+    }
+  }
+
+  function loadOpenCv() {
+    if (window.cv && typeof window.cv.Mat === "function") return Promise.resolve(window.cv);
+    if (openCvPromise) return openCvPromise;
+    openCvPromise = new Promise(function (resolve, reject) {
+      const script = document.createElement("script");
+      script.async = true;
+      script.crossOrigin = "anonymous";
+      script.src = "https://docs.opencv.org/4.x/opencv.js";
+      let interval = null;
+      let timeout = null;
+      let settled = false;
+      function finish(error, cv) {
+        if (settled) return;
+        settled = true;
+        if (interval) clearInterval(interval);
+        if (timeout) clearTimeout(timeout);
+        if (error) reject(error);
+        else resolve(cv);
+      }
+      script.addEventListener("load", function () {
+        interval = setInterval(function () {
+          if (window.cv && typeof window.cv.Mat === "function") finish(null, window.cv);
+        }, 120);
+        timeout = setTimeout(function () {
+          finish(new Error("自动找边组件加载超时。"));
+        }, 45000);
+        if (window.cv && typeof window.cv.Mat === "function") finish(null, window.cv);
+      }, { once: true });
+      script.addEventListener("error", function () {
+        finish(new Error("自动找边组件加载失败。"));
+      }, { once: true });
+      document.head.appendChild(script);
+    });
+    openCvPromise.catch(function () { openCvPromise = null; });
+    return openCvPromise;
+  }
+
+  function orderScanCorners(points) {
+    const sums = points.map(function (point) { return point.x + point.y; });
+    const diffs = points.map(function (point) { return point.x - point.y; });
+    const topLeft = points[sums.indexOf(Math.min.apply(null, sums))];
+    const bottomRight = points[sums.indexOf(Math.max.apply(null, sums))];
+    const topRight = points[diffs.indexOf(Math.max.apply(null, diffs))];
+    const bottomLeft = points[diffs.indexOf(Math.min.apply(null, diffs))];
+    return [topLeft, topRight, bottomRight, bottomLeft];
+  }
+
+  function isValidScanQuad(points, width, height) {
+    if (!points || points.length !== 4) return false;
+    let area = 0;
+    let sign = 0;
+    for (let i = 0; i < 4; i++) {
+      const a = points[i];
+      const b = points[(i + 1) % 4];
+      const c = points[(i + 2) % 4];
+      if (!Number.isFinite(a.x) || !Number.isFinite(a.y) || a.x < 0 || a.y < 0 || a.x > width || a.y > height) return false;
+      area += a.x * b.y - b.x * a.y;
+      const cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+      if (Math.abs(cross) < width * height * 0.00001) return false;
+      const currentSign = Math.sign(cross);
+      if (sign && sign !== currentSign) return false;
+      sign = currentSign;
+    }
+    return Math.abs(area) / 2 > width * height * 0.04;
+  }
+
+  async function detectDocumentCorners(photo) {
+    const cv = await loadOpenCv();
+    const scale = Math.min(1, 1000 / Math.max(photo.width, photo.height));
+    const workCanvas = document.createElement("canvas");
+    workCanvas.width = Math.max(1, Math.round(photo.width * scale));
+    workCanvas.height = Math.max(1, Math.round(photo.height * scale));
+    workCanvas.getContext("2d", { alpha: false }).drawImage(photo, 0, 0, workCanvas.width, workCanvas.height);
+    let src = null;
+    let gray = null;
+    let edges = null;
+    let kernel = null;
+    let contours = null;
+    let hierarchy = null;
+    let best = null;
+    let bestArea = 0;
+    try {
+      src = cv.imread(workCanvas);
+      gray = new cv.Mat();
+      edges = new cv.Mat();
+      kernel = cv.Mat.ones(3, 3, cv.CV_8U);
+      contours = new cv.MatVector();
+      hierarchy = new cv.Mat();
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0, 0, cv.BORDER_DEFAULT);
+      cv.Canny(gray, edges, 40, 120);
+      cv.dilate(edges, edges, kernel, new cv.Point(-1, -1), 1);
+      cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+      for (let i = 0; i < contours.size(); i++) {
+        const contour = contours.get(i);
+        const approx = new cv.Mat();
+        try {
+          const perimeter = cv.arcLength(contour, true);
+          cv.approxPolyDP(contour, approx, 0.02 * perimeter, true);
+          if (approx.rows !== 4 || !cv.isContourConvex(approx)) continue;
+          const area = Math.abs(cv.contourArea(approx));
+          if (area < workCanvas.width * workCanvas.height * 0.12 || area <= bestArea) continue;
+          const values = approx.data32S;
+          const points = [];
+          for (let j = 0; j < 4; j++) points.push({ x: values[j * 2], y: values[j * 2 + 1] });
+          const ordered = orderScanCorners(points);
+          if (!isValidScanQuad(ordered, workCanvas.width, workCanvas.height)) continue;
+          bestArea = area;
+          best = ordered.map(function (point) { return { x: point.x / scale, y: point.y / scale }; });
+        } finally {
+          contour.delete();
+          approx.delete();
+        }
+      }
+      return best;
+    } finally {
+      if (src) src.delete();
+      if (gray) gray.delete();
+      if (edges) edges.delete();
+      if (kernel) kernel.delete();
+      if (contours) contours.delete();
+      if (hierarchy) hierarchy.delete();
+    }
+  }
+
+  function solveLinearSystem(matrix, values) {
+    const size = values.length;
+    const rows = matrix.map(function (row, index) { return row.slice().concat(values[index]); });
+    for (let col = 0; col < size; col++) {
+      let pivot = col;
+      for (let row = col + 1; row < size; row++) {
+        if (Math.abs(rows[row][col]) > Math.abs(rows[pivot][col])) pivot = row;
+      }
+      if (Math.abs(rows[pivot][col]) < 1e-10) throw new Error("纸边角度异常，请重新调整四角。");
+      const temp = rows[col]; rows[col] = rows[pivot]; rows[pivot] = temp;
+      const divisor = rows[col][col];
+      for (let j = col; j <= size; j++) rows[col][j] /= divisor;
+      for (let row = 0; row < size; row++) {
+        if (row === col) continue;
+        const factor = rows[row][col];
+        for (let j = col; j <= size; j++) rows[row][j] -= factor * rows[col][j];
+      }
+    }
+    return rows.map(function (row) { return row[size]; });
+  }
+
+  function rectifyScanCanvas(source, corners) {
+    const distance = function (a, b) { return Math.hypot(a.x - b.x, a.y - b.y); };
+    const widthEstimate = Math.max(distance(corners[0], corners[1]), distance(corners[3], corners[2]));
+    const heightEstimate = Math.max(distance(corners[0], corners[3]), distance(corners[1], corners[2]));
+    const scale = Math.min(1, 3508 / Math.max(widthEstimate, heightEstimate));
+    const outputWidth = Math.max(2, Math.round(widthEstimate * scale));
+    const outputHeight = Math.max(2, Math.round(heightEstimate * scale));
+    const targets = [[0, 0], [outputWidth - 1, 0], [outputWidth - 1, outputHeight - 1], [0, outputHeight - 1]];
+    const matrix = [];
+    const values = [];
+    for (let i = 0; i < 4; i++) {
+      const x = targets[i][0];
+      const y = targets[i][1];
+      const sourceX = corners[i].x;
+      const sourceY = corners[i].y;
+      matrix.push([x, y, 1, 0, 0, 0, -sourceX * x, -sourceX * y]);
+      values.push(sourceX);
+      matrix.push([0, 0, 0, x, y, 1, -sourceY * x, -sourceY * y]);
+      values.push(sourceY);
+    }
+    const transform = solveLinearSystem(matrix, values);
+    const sourceContext = source.getContext("2d", { willReadFrequently: true });
+    const sourcePixels = sourceContext.getImageData(0, 0, source.width, source.height).data;
+    const output = document.createElement("canvas");
+    output.width = outputWidth;
+    output.height = outputHeight;
+    const outputContext = output.getContext("2d", { alpha: false });
+    const outputPixels = outputContext.createImageData(outputWidth, outputHeight);
+    const destination = outputPixels.data;
+    const [a, b, c, d, e, f, g, h] = transform;
+    const sourceWidth = source.width;
+    const sourceHeight = source.height;
+    for (let y = 0; y < outputHeight; y++) {
+      for (let x = 0; x < outputWidth; x++) {
+        const denominator = g * x + h * y + 1;
+        if (Math.abs(denominator) < 1e-9) continue;
+        const sx = (a * x + b * y + c) / denominator;
+        const sy = (d * x + e * y + f) / denominator;
+        if (sx < 0 || sy < 0 || sx > sourceWidth - 1 || sy > sourceHeight - 1) continue;
+        const x0 = Math.floor(sx), y0 = Math.floor(sy);
+        const x1 = Math.min(sourceWidth - 1, x0 + 1), y1 = Math.min(sourceHeight - 1, y0 + 1);
+        const fx = sx - x0, fy = sy - y0;
+        const p00 = (y0 * sourceWidth + x0) * 4;
+        const p10 = (y0 * sourceWidth + x1) * 4;
+        const p01 = (y1 * sourceWidth + x0) * 4;
+        const p11 = (y1 * sourceWidth + x1) * 4;
+        const outIndex = (y * outputWidth + x) * 4;
+        for (let channel = 0; channel < 3; channel++) {
+          const top = sourcePixels[p00 + channel] * (1 - fx) + sourcePixels[p10 + channel] * fx;
+          const bottom = sourcePixels[p01 + channel] * (1 - fx) + sourcePixels[p11 + channel] * fx;
+          destination[outIndex + channel] = clampByte(top * (1 - fy) + bottom * fy);
+        }
+        destination[outIndex + 3] = 255;
+      }
+    }
+    outputContext.putImageData(outputPixels, 0, 0);
+    return output;
+  }
 
   function formatBytes(bytes) {
     if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024)) + " KB";
@@ -535,6 +1217,39 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     angle.addEventListener("change", function () { applyRotation(record, Number(angle.value) || 0); });
     rotation.append(rotationTitle, leftTurn, rightTurn, fineLeft, fineRight, range, angle, degree);
 
+    const filterRow = document.createElement("div");
+    filterRow.className = "scan-filter-row";
+    const filterLabel = document.createElement("label");
+    filterLabel.textContent = "扫描效果";
+    const filterSelect = document.createElement("select");
+    filterSelect.id = "scanFilter" + currentIndex;
+    filterLabel.htmlFor = filterSelect.id;
+    filterSelect.setAttribute("aria-label", "扫描效果");
+    [
+      ["color", "原图彩色"],
+      ["enhance", "增强彩色"],
+      ["grayscale", "灰度"],
+      ["blackwhite", "黑白文档"]
+    ].forEach(function (optionData) {
+      const option = document.createElement("option");
+      option.value = optionData[0];
+      option.textContent = optionData[1];
+      filterSelect.append(option);
+    });
+    filterSelect.value = record.filterMode || "color";
+    const filterNote = document.createElement("span");
+    filterNote.className = "scan-filter-note";
+    filterNote.textContent = "黑白效果可能减淡浅色铅笔字。";
+    filterSelect.addEventListener("change", function () {
+      record.filterMode = filterSelect.value;
+      record.processed = null;
+      record.processedAngle = null;
+      record.processedFilter = null;
+      invalidatePreview();
+      renderAll();
+    });
+    filterRow.append(filterLabel, filterSelect, filterNote);
+
     const preview = document.createElement("div");
     preview.className = "preview-wrap" + (record.split ? " cut-active" : "");
     const canvas = document.createElement("canvas");
@@ -545,7 +1260,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     guide.className = "cut-guide";
     guide.textContent = record.split
       ? "在照片上左滑可切换下一张，右滑切回上一张；拖动红色竖线可左右调整。"
-      : "照片上左滑切换下一张、右滑切换上一张。";
+      : "照片上左滑切换下一张、右滑切换上一张。扫描效果会一并写入 PDF。";
 
     const cutPanel = document.createElement("div");
     cutPanel.className = "cut-panel";
@@ -569,7 +1284,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     renderCutRows(record, cutList, canvas);
     cutPanel.append(cutHead, cutList);
 
-    editor.append(top, options, rotation, preview, guide, cutPanel);
+    editor.append(top, options, rotation, filterRow, preview, guide, cutPanel);
     bindImageGestures(record, canvas, preview);
   }
 
@@ -640,6 +1355,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     context.rotate(radians);
     context.drawImage(record.image, -sourceW * scale / 2, -sourceH * scale / 2, sourceW * scale, sourceH * scale);
     context.restore();
+    applyScanFilter(canvas, record.filterMode || "color");
     drawCutOverlay(record, canvas);
   }
 
@@ -793,6 +1509,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     record.rotation = normalizeAngle(angle);
     record.processed = null;
     record.processedAngle = null;
+    record.processedFilter = null;
     if (record.split && record.cuts.length) record.cuts = [0.5];
     invalidatePreview();
     renderAll();
@@ -822,7 +1539,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
         } catch (error) {
           reject(error);
         }
-      }, "image/jpeg", 0.95);
+      }, "image/jpeg", 0.90);
     });
   }
 
@@ -1040,8 +1757,12 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     if (event.target === pageModal) closeModal();
   });
   window.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") {
+      if (!pageModal.hidden) closeModal();
+      if (!scannerModal.hidden) closeScanner();
+      return;
+    }
     if (pageModal.hidden) return;
-    if (event.key === "Escape") closeModal();
     if (event.key === "ArrowLeft" && modalIndex > 0) { modalIndex--; updateModal(); }
     if (event.key === "ArrowRight" && modalIndex < previewUrls.length - 1) { modalIndex++; updateModal(); }
   });
@@ -1065,6 +1786,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
   }
 
   window.addEventListener("beforeunload", function () {
+    stopCamera();
     records.forEach(function (record) { URL.revokeObjectURL(record.url); });
     previewUrls.forEach(function (url) { URL.revokeObjectURL(url); });
   });
