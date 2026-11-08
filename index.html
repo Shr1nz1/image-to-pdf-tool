@@ -171,7 +171,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
 </header>
 <main>
   <section class="panel" aria-label="添加图片与文件设置">
-    <p class="instructions">添加多张图片。所有图片默认纳入 PDF，可逐张取消；PDF 页序按图片顺序和分割线从左到右排列。</p>
+    <p class="instructions">添加多张图片。所有图片默认纳入 PDF，可逐张裁切、旋转或取消；PDF 页序按图片顺序和分割线从左到右排列。</p>
     <div class="input-source-row">
       <label class="dropzone" id="dropzone">
         <input id="fileInput" type="file" accept="image/*" multiple>
@@ -196,7 +196,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
 
   <section id="empty">
     <strong>先扫描纸张或添加几张图片</strong>
-    扫描后可调整纸张边缘与画面效果，再旋转、拆分和预览最终 PDF。
+    上传或扫描后都可以裁切纸边、调整画面效果，再旋转、拆分和预览最终 PDF。
   </section>
 
   <div class="workspace" id="workspace" hidden>
@@ -249,7 +249,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     <div class="scan-top">
       <div>
         <h2 id="scanTitle">扫描纸张</h2>
-        <p>让整张纸进入画面，拍摄后可拖动四角校正纸边。</p>
+        <p id="scanDescription">让整张纸进入画面，拍摄后可拖动四角校正纸边。</p>
       </div>
       <button type="button" id="closeScanner">关闭</button>
     </div>
@@ -289,6 +289,8 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
   const fileInput = document.getElementById("fileInput");
   const cameraInput = document.getElementById("cameraInput");
   const scannerModal = document.getElementById("scannerModal");
+  const scanTitle = document.getElementById("scanTitle");
+  const scanDescription = document.getElementById("scanDescription");
   const scanVideo = document.getElementById("scanVideo");
   const scanPreviewCanvas = document.getElementById("scanPreview");
   const scanHint = document.getElementById("scanHint");
@@ -297,6 +299,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
   const addScanPageButton = document.getElementById("addScanPage");
   const retakeScanButton = document.getElementById("retakeScan");
   const detectScanButton = document.getElementById("detectScan");
+  const chooseScanFileButton = document.getElementById("chooseScanFile");
   const dropzone = document.getElementById("dropzone");
   const workspace = document.getElementById("workspace");
   const empty = document.getElementById("empty");
@@ -332,6 +335,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
   let scanSessionAdded = 0;
   let scanFileQueue = [];
   let currentScanFile = null;
+  let cropTargetRecord = null;
   let openCvPromise = null;
 
   function setStatus(message, isError) {
@@ -414,9 +418,18 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     const filterMode = record.filterMode || "color";
     if (Math.abs(record.rotation % 360) < 0.001 && filterMode === "color") return record.image;
     if (record.processed && record.processedAngle === record.rotation && record.processedFilter === filterMode) return record.processed;
-    const sourceW = record.image.naturalWidth;
-    const sourceH = record.image.naturalHeight;
-    const radians = record.rotation * Math.PI / 180;
+    const canvas = rotateSource(record.image, record.rotation);
+    applyScanFilter(canvas, filterMode);
+    record.processed = canvas;
+    record.processedAngle = record.rotation;
+    record.processedFilter = filterMode;
+    return canvas;
+  }
+
+  function rotateSource(source, angle) {
+    const sourceW = sourceWidth(source);
+    const sourceH = sourceHeight(source);
+    const radians = angle * Math.PI / 180;
     const cos = Math.cos(radians);
     const sin = Math.sin(radians);
     const outW = Math.max(1, Math.ceil(Math.abs(sourceW * cos) + Math.abs(sourceH * sin)));
@@ -429,11 +442,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     context.fillRect(0, 0, outW, outH);
     context.translate(outW / 2, outH / 2);
     context.rotate(radians);
-    context.drawImage(record.image, -sourceW / 2, -sourceH / 2);
-    applyScanFilter(canvas, filterMode);
-    record.processed = canvas;
-    record.processedAngle = record.rotation;
-    record.processedFilter = filterMode;
+    context.drawImage(source, -sourceW / 2, -sourceH / 2);
     return canvas;
   }
 
@@ -444,7 +453,8 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
       const image = new Image();
       image.onload = function () {
         resolve({
-          file: file, url: url, image: image, include: true, rotation: 0, processed: null,
+          file: file, url: url, image: image, originalImage: image, hasCrop: false, cropUndo: null,
+          include: true, rotation: 0, processed: null,
           processedAngle: null, processedFilter: null, filterMode: options.scanned ? "enhance" : "color",
           scanned: Boolean(options.scanned), split: false, cuts: []
         });
@@ -525,8 +535,15 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     detectScanButton.hidden = true;
   }
   async function openScanner() {
+    cropTargetRecord = null;
+    scanTitle.textContent = "扫描纸张";
+    scanDescription.textContent = "让整张纸进入画面，拍摄后可拖动四角校正纸边。";
+    chooseScanFileButton.hidden = false;
+    addScanPageButton.textContent = "校正并加入 PDF";
     scannerModal.hidden = false;
     scanSessionAdded = 0;
+    scanFileQueue = [];
+    currentScanFile = null;
     scanSessionCount.textContent = "本次已加入 0 页";
     resetScanCapture();
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -563,10 +580,16 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     stopCamera();
     scanFileQueue = [];
     currentScanFile = null;
+    cropTargetRecord = null;
     scannerModal.hidden = true;
+    scanTitle.textContent = "扫描纸张";
+    scanDescription.textContent = "让整张纸进入画面，拍摄后可拖动四角校正纸边。";
+    chooseScanFileButton.hidden = false;
+    addScanPageButton.textContent = "校正并加入 PDF";
     resetScanCapture();
   }
   function openScanFilePicker() {
+    if (cropTargetRecord) return;
     if (scannerModal.hidden) {
       scannerModal.hidden = false;
       scanSessionAdded = 0;
@@ -580,6 +603,33 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
       scanHint.textContent = "请选择一张或多张纸张照片；每张都可以手动调整四角。";
     }
     cameraInput.click();
+  }
+  function openCropEditor(record) {
+    stopCamera();
+    scanFileQueue = [];
+    currentScanFile = null;
+    cropTargetRecord = record;
+    scanTitle.textContent = "裁切图片";
+    scanDescription.textContent = "拖动四个圆点框出要保留的区域；应用后会自动拉正透视。";
+    chooseScanFileButton.hidden = true;
+    scannerModal.hidden = false;
+    resetScanCapture();
+    scanVideo.hidden = true;
+    takeScanButton.hidden = true;
+    addScanPageButton.textContent = "应用裁切";
+    scanSessionCount.textContent = "可拖动四角调整裁切范围";
+    const source = rotateSource(record.image, record.rotation);
+    presentScanPhoto(source, fullFrameCorners(source.width, source.height));
+  }
+  function fullFrameCorners(width, height) {
+    const insetX = Math.max(1, Math.min(2, width * 0.002));
+    const insetY = Math.max(1, Math.min(2, height * 0.002));
+    return [
+      { x: insetX, y: insetY },
+      { x: width - insetX, y: insetY },
+      { x: width - insetX, y: height - insetY },
+      { x: insetX, y: height - insetY }
+    ];
   }
   function defaultScanCorners(width, height) {
     const insetX = width * 0.025;
@@ -717,13 +767,33 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
   document.getElementById("addScanPage").addEventListener("click", async function () {
     if (!scanSourceCanvas || !scanCorners) return;
     if (!isValidScanQuad(scanCorners, scanSourceCanvas.width, scanSourceCanvas.height)) {
-      scanHint.textContent = "四个角需要围成凸四边形，请重新调整后再加入。";
+      scanHint.textContent = cropTargetRecord
+        ? "四个角需要围成凸四边形，请重新调整后再应用裁切。"
+        : "四个角需要围成凸四边形，请重新调整后再加入。";
       return;
     }
     addScanPageButton.disabled = true;
-    scanHint.textContent = "正在拉正纸面并整理扫描页…";
+    scanHint.textContent = cropTargetRecord ? "正在裁切图片并校正透视…" : "正在拉正纸面并整理扫描页…";
     try {
       const rectified = rectifyScanCanvas(scanSourceCanvas, scanCorners);
+      if (cropTargetRecord) {
+        const record = cropTargetRecord;
+        if (!record.hasCrop) {
+          record.cropUndo = { rotation: record.rotation, split: record.split, cuts: record.cuts.slice() };
+        }
+        record.image = rectified;
+        record.hasCrop = true;
+        record.rotation = 0;
+        record.processed = null;
+        record.processedAngle = null;
+        record.processedFilter = null;
+        if (record.split) record.cuts = [0.5];
+        closeScanner();
+        invalidatePreview(false);
+        renderAll();
+        setStatus("已裁切并校正“" + record.file.name + "”。", false);
+        return;
+      }
       const blob = await new Promise(function (resolve, reject) {
         rectified.toBlob(function (result) {
           if (result) resolve(result);
@@ -754,9 +824,9 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     }
   });
 
-  function presentScanPhoto(photo) {
+  function presentScanPhoto(photo, initialCorners) {
     scanSourceCanvas = photo;
-    scanCorners = defaultScanCorners(photo.width, photo.height);
+    scanCorners = initialCorners || defaultScanCorners(photo.width, photo.height);
     scanCornersEdited = false;
     scanVideo.hidden = true;
     scanPreviewCanvas.hidden = false;
@@ -764,20 +834,28 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     addScanPageButton.hidden = false;
     retakeScanButton.hidden = !cameraStream || Boolean(currentScanFile);
     detectScanButton.hidden = false;
-    scanHint.textContent = "正在识别纸张边缘；也可以直接拖动四角调整。";
+    scanHint.textContent = cropTargetRecord
+      ? "正在识别裁切范围；也可以直接拖动四角调整。"
+      : "正在识别纸张边缘；也可以直接拖动四角调整。";
     drawScanPreview();
     detectDocumentCorners(photo).then(function (corners) {
       if (scanSourceCanvas !== photo || scanCornersEdited) return;
       if (corners) {
         scanCorners = corners;
-        scanHint.textContent = "已找到纸张边缘；拖动四个圆点微调后，点击“校正并加入 PDF”。";
+        scanHint.textContent = cropTargetRecord
+          ? "已找到边缘；拖动四个圆点微调后，点击“应用裁切”。"
+          : "已找到纸张边缘；拖动四个圆点微调后，点击“校正并加入 PDF”。";
       } else {
-        scanHint.textContent = "未能自动找到纸边；请拖动四个圆点框住纸张。";
+        scanHint.textContent = cropTargetRecord
+          ? "未能自动找到裁切范围；请拖动四个圆点框出要保留的区域。"
+          : "未能自动找到纸边；请拖动四个圆点框住纸张。";
       }
       drawScanPreview();
     }).catch(function () {
       if (scanSourceCanvas !== photo || scanCornersEdited) return;
-      scanHint.textContent = "自动识别暂不可用；请拖动四个圆点框住纸张。";
+      scanHint.textContent = cropTargetRecord
+        ? "自动识别暂不可用；请拖动四个圆点框出要保留的区域。"
+        : "自动识别暂不可用；请拖动四个圆点框住纸张。";
       drawScanPreview();
     });
   }
@@ -806,7 +884,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
         };
         image.src = url;
       });
-      presentScanPhoto(photo);
+      presentScanPhoto(photo, fullFrameCorners(photo.width, photo.height));
     } catch (error) {
       scanHint.textContent = error && error.message ? error.message : "这张照片无法读取，已跳过。";
       currentScanFile = null;
@@ -1118,18 +1196,40 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
     filename.textContent = record.file.name;
     const dimensions = document.createElement("span");
     dimensions.className = "dimensions";
-    dimensions.textContent = record.image.naturalWidth + " × " + record.image.naturalHeight + " · " + formatBytes(record.file.size);
+    dimensions.textContent = sourceWidth(record.image) + " × " + sourceHeight(record.image) + " · " + formatBytes(record.file.size) + (record.hasCrop ? " · 已裁切" : "");
     title.append(heading, filename, dimensions);
 
     const tools = document.createElement("div");
     tools.className = "editor-actions";
     const moveUp = makeButton("上移", "secondary small", "调整 PDF 页序", function () { moveRecord(record, -1); });
     const moveDown = makeButton("下移", "secondary small", "调整 PDF 页序", function () { moveRecord(record, 1); });
+    const crop = makeButton(record.hasCrop ? "重新裁切" : "裁切/校正", "secondary small", "拖动四角裁切并校正透视", function () { openCropEditor(record); });
     const remove = makeButton("删除", "danger small", "移除此图片", function () { removeRecord(record); });
     moveUp.disabled = currentIndex === 0 || busy;
     moveDown.disabled = currentIndex === records.length - 1 || busy;
+    crop.disabled = busy;
     remove.disabled = busy;
-    tools.append(moveUp, moveDown, remove);
+    tools.append(moveUp, moveDown, crop);
+    if (record.hasCrop) {
+      const restoreCrop = makeButton("还原原图", "secondary small", "撤销裁切并恢复上传时的图片", function () {
+        record.image = record.originalImage;
+        record.hasCrop = false;
+        record.rotation = record.cropUndo ? record.cropUndo.rotation : 0;
+        if (record.cropUndo) {
+          record.split = record.cropUndo.split;
+          record.cuts = record.cropUndo.cuts.slice();
+        }
+        record.cropUndo = null;
+        record.processed = null;
+        record.processedAngle = null;
+        record.processedFilter = null;
+        invalidatePreview();
+        renderAll();
+      });
+      restoreCrop.disabled = busy;
+      tools.append(restoreCrop);
+    }
+    tools.append(remove);
     top.append(title, tools);
 
     const options = document.createElement("div");
@@ -1337,8 +1437,8 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
   }
 
   function drawRotatedPreview(record, canvas, angle) {
-    const sourceW = record.image.naturalWidth;
-    const sourceH = record.image.naturalHeight;
+    const sourceW = sourceWidth(record.image);
+    const sourceH = sourceHeight(record.image);
     const radians = angle * Math.PI / 180;
     const cos = Math.cos(radians);
     const sin = Math.sin(radians);
