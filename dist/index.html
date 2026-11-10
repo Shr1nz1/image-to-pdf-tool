@@ -176,7 +176,7 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
       <label class="dropzone" id="dropzone">
         <input id="fileInput" type="file" accept="image/*" multiple>
         <span class="drop-icon" aria-hidden="true">＋</span>
-        <span class="drop-copy"><strong>添加图片</strong><small>支持 JPG、PNG、WebP 等常见格式，也可以拖放多张图片</small></span>
+        <span class="drop-copy"><strong>添加图片</strong><small>支持 JPG、PNG、WebP；也可拖放或按 Ctrl+V / ⌘V 粘贴图片</small></span>
       </label>
       <div class="source-actions">
         <button type="button" class="primary" id="openScanner">📷 打开相机扫描</button>
@@ -494,6 +494,29 @@ button.small { min-height:32px; padding:5px 9px; font-size:13px; }
   fileInput.addEventListener("change", function () {
     addFiles(fileInput.files);
     fileInput.value = "";
+  });
+  window.addEventListener("paste", function (event) {
+    const clipboard = event.clipboardData;
+    if (!clipboard) return;
+    const active = document.activeElement;
+    if (active && (active.isContentEditable || active.matches("input:not([type=file]), textarea, [contenteditable='true']"))) return;
+    const items = Array.from(clipboard.items || []);
+    let files = items
+      .filter(function (item) { return item.kind === "file" && item.type.indexOf("image/") === 0; })
+      .map(function (item) { return item.getAsFile(); })
+      .filter(Boolean);
+    if (!files.length) {
+      files = Array.from(clipboard.files || []).filter(function (file) { return file.type.indexOf("image/") === 0; });
+    }
+    if (!files.length) return;
+    const stamp = Date.now();
+    files = files.map(function (file, index) {
+      if (file.name) return file;
+      const subtype = (file.type.split("/")[1] || "png").toLowerCase().replace("jpeg", "jpg");
+      return new File([file], "剪贴板图片-" + stamp + "-" + (index + 1) + "." + subtype, { type: file.type });
+    });
+    event.preventDefault();
+    addFiles(files);
   });
   cameraInput.addEventListener("change", async function () {
     const files = Array.from(cameraInput.files || []);
